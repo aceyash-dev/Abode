@@ -24,9 +24,8 @@ class TrieDictionary {
     private val words = ArrayList<String>(1024)
     private val frequencies = HashMap<String, Int>(1024)
 
-    private var size = 0
-
-    val wordCount: Int get() = size
+    /** Derived, not tracked: one counter to keep in step is one too many. */
+    val wordCount: Int get() = words.size
 
     fun insert(word: String, frequency: Int = 1) {
         if (word.isEmpty()) return
