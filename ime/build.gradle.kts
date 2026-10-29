@@ -28,6 +28,7 @@ dependencies {
     implementation(project(":engine-text"))
     implementation(project(":engine-voice"))
     implementation(project(":core-common"))
+    implementation(project(":data"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)

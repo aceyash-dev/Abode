@@ -149,8 +149,11 @@ class AbodeInputMethodService : InputMethodService(),
 
             root = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(strip, LinearLayout.LayoutParams(MATCH_PARENT, dp(34)))
-                addView(grid, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+                addView(strip, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(34)))
+                addView(grid, LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ))
             }
 
             applyTheme(currentTheme)
