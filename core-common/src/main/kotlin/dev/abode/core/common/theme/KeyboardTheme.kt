@@ -6,6 +6,13 @@ package dev.abode.core.common.theme
  * Colours are ARGB ints so the model stays pure data and can be persisted,
  * compared and unit-tested without touching Android graphics classes.
  */
+/**
+ * How a key is drawn. Hexagons are not decoration: they tile without gaps, so
+ * the finger lands on a shape whose centre is unambiguous, which is the idea
+ * Typewise built a keyboard on.
+ */
+enum class KeyShape { ROUNDED, HEXAGON }
+
 data class KeyboardTheme(
     val id: String = "abode",
     val name: String = "Abode",
@@ -20,6 +27,7 @@ data class KeyboardTheme(
     val cornerRadiusDp: Float = 12f,
     val keyGapDp: Float = 6f,
     val rowHeightDp: Float = 52f,
+    val keyShape: KeyShape = KeyShape.HEXAGON,
 ) {
     companion object {
         /** Role -> human label, in the order the editor shows them. */

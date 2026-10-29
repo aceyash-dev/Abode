@@ -98,6 +98,8 @@ class AbodeInputMethodService : InputMethodService(),
     private var toolbarMode = false
     private var numericMode = false
     private var transliterate = false
+    private var statusText = ""
+    private var lastCorrection: Pair<String, String>? = null
     private val latinBuffer = StringBuilder()
     private var showStartedAt = 0L
 
@@ -119,7 +121,14 @@ class AbodeInputMethodService : InputMethodService(),
         scope.launch {
             suggestionEngine.suggestions.collect { list ->
                 if (::strip.isInitialized) {
-                    strip.text = list.joinToString(separator = "    ")
+                    // A status message outranks suggestions: it is the only
+                    // feedback the keyboard has, and an undo offer that gets
+                    // wiped by the next prediction is not an offer.
+                    strip.text = if (statusText.isNotEmpty()) {
+                        statusText
+                    } else {
+                        list.joinToString(separator = "    ")
+                    }
                 }
             }
         }
@@ -151,6 +160,7 @@ class AbodeInputMethodService : InputMethodService(),
                 maxLines = 1
                 setPadding(dp(12), dp(6), dp(12), dp(6))
                 setTextColor(0xFF5F5F5F.toInt())
+                setOnClickListener { undoLastCorrection() }
             }
 
             grid = KeyGridView(this).apply {
@@ -241,6 +251,7 @@ class AbodeInputMethodService : InputMethodService(),
     private fun onKeyUp(key: Key) {
         when (key.kind) {
             KeyKind.CHARACTER -> {
+                if (statusText.isNotEmpty()) setStatus("")
                 if (transliterate) {
                     // Buffer the Latin letters and show them as composing text,
                     // so the user sees what they typed and the whole word is
@@ -315,6 +326,24 @@ class AbodeInputMethodService : InputMethodService(),
         ic.deleteSurroundingText(word.length, 0)
         ic.commitText(correction, 1)
         ic.endBatchEdit()
+
+        // Autocorrect that cannot be taken back is autocorrect people turn off.
+        lastCorrection = word to correction
+        setStatus("Undo \u201C$word\u201D")
+    }
+
+    /** Puts the user's own spelling back, space and all. */
+    private fun undoLastCorrection() {
+        val (original, corrected) = lastCorrection ?: return
+        lastCorrection = null
+        val ic = currentInputConnection ?: return
+
+        ic.beginBatchEdit()
+        // The corrected word is followed by the space that triggered it.
+        ic.deleteSurroundingText(corrected.length + 1, 0)
+        ic.commitText("$original ", 1)
+        ic.endBatchEdit()
+        setStatus("")
     }
 
     /** Tracks whether the next letter should be a capital. */
@@ -517,6 +546,7 @@ class AbodeInputMethodService : InputMethodService(),
      * simply did nothing.
      */
     private fun setStatus(text: String) {
+        statusText = text
         if (::strip.isInitialized) strip.text = text
     }
 

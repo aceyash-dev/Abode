@@ -36,10 +36,10 @@ import androidx.compose.ui.unit.dp
 import dev.abode.app.theme.ThemeEditorScreen
 import dev.abode.core.ui.AbodeTheme
 import dev.abode.voice.CapabilityProbe
-import me.rerere.hugeicons.HugeIcons
-import me.rerere.hugeicons.stroke.Colors
-import me.rerere.hugeicons.stroke.Keyboard
-import me.rerere.hugeicons.stroke.Mic01
+import br.com.devsrsouza.compose.icons.tabler.TablerIcons
+import br.com.devsrsouza.compose.icons.tabler.filled.Keyboard
+import br.com.devsrsouza.compose.icons.tabler.filled.Microphone
+import br.com.devsrsouza.compose.icons.tabler.filled.Palette
 
 class MainActivity : ComponentActivity() {
 
@@ -75,7 +75,7 @@ private fun StatusScreen(onCustomise: () -> Unit) {
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
-                imageVector = HugeIcons.Keyboard,
+                imageVector = TablerIcons.Filled.Keyboard,
                 contentDescription = null,
                 modifier = Modifier.size(36.dp),
                 tint = MaterialTheme.colorScheme.primary,
@@ -109,7 +109,7 @@ private fun StatusScreen(onCustomise: () -> Unit) {
                 Text(if (enabled) "Keyboard is enabled in system settings." else "Keyboard is not enabled yet.")
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = HugeIcons.Mic01,
+                        imageVector = TablerIcons.Filled.Microphone,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp),
                     )
@@ -134,13 +134,13 @@ private fun StatusScreen(onCustomise: () -> Unit) {
             },
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Icon(HugeIcons.Keyboard, contentDescription = null, modifier = Modifier.size(18.dp))
+            Icon(TablerIcons.Filled.Keyboard, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
             Text("Open keyboard settings")
         }
 
         OutlinedButton(onClick = onCustomise, modifier = Modifier.fillMaxWidth()) {
-            Icon(HugeIcons.Colors, contentDescription = null, modifier = Modifier.size(18.dp))
+            Icon(TablerIcons.Filled.Palette, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
             Text("Appearance — colours, font, shape")
         }

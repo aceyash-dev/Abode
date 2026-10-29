@@ -33,6 +33,8 @@ class SystemVoiceEngine(private val context: Context) : VoiceEngine {
     override val events: SharedFlow<VoiceEvent> = _events.asSharedFlow()
 
     private var recognizer: SpeechRecognizer? = null
+    private var pendingLocale: Locale? = null
+    private var preferOffline = true
 
     private val listener = object : RecognitionListener {
         override fun onReadyForSpeech(params: Bundle?) {
@@ -49,10 +51,21 @@ class SystemVoiceEngine(private val context: Context) : VoiceEngine {
 
         override fun onError(error: Int) {
             // A recogniser that errored can be left in a state where every later
-            // startListening is refused, so it is discarded rather than reused:
-            // the next tap builds a fresh one. Creating it is cheap; a mic key
-            // that works exactly once is not.
+            // startListening is refused, so it is discarded rather than reused.
             release()
+
+            // 12 and 13 mean there is no on-device model for this language.
+            // Retrying once without the offline preference is the difference
+            // between "Recognition failed (12)" and a transcript.
+            val locale = pendingLocale
+            if ((error == ERROR_LANGUAGE_NOT_SUPPORTED || error == ERROR_LANGUAGE_UNAVAILABLE) &&
+                preferOffline && locale != null
+            ) {
+                preferOffline = false
+                start(locale)
+                return
+            }
+
             _events.tryEmit(VoiceEvent.Failed(error, describe(error)))
         }
 
@@ -97,7 +110,8 @@ class SystemVoiceEngine(private val context: Context) : VoiceEngine {
             recognizer = it
         }
 
-        active.startListening(buildIntent(locale))
+        pendingLocale = locale
+        active.startListening(buildIntent(locale, preferOffline = preferOffline))
     }
 
     override fun stop() {
@@ -113,14 +127,14 @@ class SystemVoiceEngine(private val context: Context) : VoiceEngine {
         recognizer = null
     }
 
-    private fun buildIntent(locale: Locale): Intent =
+    private fun buildIntent(locale: Locale, preferOffline: Boolean): Intent =
         Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, locale.toLanguageTag())
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             // Ask for offline first; the recogniser ignores it where unsupported.
-            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, preferOffline)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
         }
 
@@ -134,10 +148,19 @@ class SystemVoiceEngine(private val context: Context) : VoiceEngine {
         SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Recogniser busy"
         SpeechRecognizer.ERROR_SERVER -> "Server error"
         SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech detected"
+        11 -> "Server disconnected"
+        // 12 is what a device returns when the recogniser has no offline model
+        // for the language. Retrying without the offline preference hands the
+        // request to Google's online recogniser, which does have one.
+        12 -> "No offline model for this language"
+        13 -> "Language unavailable"
+        14 -> "Cannot check language support"
         else -> "Recognition failed ($error)"
     }
 
     private companion object {
         const val ERROR_UNAVAILABLE = -100
+        const val ERROR_LANGUAGE_NOT_SUPPORTED = 12
+        const val ERROR_LANGUAGE_UNAVAILABLE = 13
     }
 }

@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import dev.abode.core.common.theme.KeyShape
 import dev.abode.core.common.theme.KeyboardTheme
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -37,6 +38,9 @@ class ThemePreferences(private val context: Context) {
             cornerRadiusDp = prefs[KEY_CORNER] ?: defaults.cornerRadiusDp,
             keyGapDp = prefs[KEY_GAP] ?: defaults.keyGapDp,
             rowHeightDp = prefs[KEY_ROW_HEIGHT] ?: defaults.rowHeightDp,
+            keyShape = prefs[KEY_SHAPE]?.let { value ->
+                KeyShape.entries.firstOrNull { it.name == value }
+            } ?: defaults.keyShape,
         )
     }
 
@@ -54,6 +58,7 @@ class ThemePreferences(private val context: Context) {
             prefs[KEY_CORNER] = theme.cornerRadiusDp
             prefs[KEY_GAP] = theme.keyGapDp
             prefs[KEY_ROW_HEIGHT] = theme.rowHeightDp
+            prefs[KEY_SHAPE] = theme.keyShape.name
         }
     }
 
@@ -70,6 +75,7 @@ class ThemePreferences(private val context: Context) {
         val KEY_CORNER = floatPreferencesKey("corner_radius")
         val KEY_GAP = floatPreferencesKey("key_gap")
         val KEY_ROW_HEIGHT = floatPreferencesKey("row_height")
+        val KEY_SHAPE = stringPreferencesKey("key_shape")
     }
 }
 

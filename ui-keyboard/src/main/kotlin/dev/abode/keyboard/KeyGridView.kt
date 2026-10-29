@@ -13,6 +13,7 @@ import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
+import dev.abode.core.common.theme.KeyShape
 import dev.abode.core.common.theme.KeyboardTheme
 import java.io.File
 
@@ -97,9 +98,11 @@ class KeyGridView @JvmOverloads constructor(
     private var rowHeight = 52f * density
     private var gap = 6f * density
     private var corner = 12f * density
+    private var keyShape: KeyShape = KeyShape.HEXAGON
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
     private val rects = ArrayList<RectF>(64)
+    private val keyPaths = ArrayList<Path>(64)
     private val keys = ArrayList<Key>(64)
     private var pressedIndex = -1
 
@@ -176,11 +179,15 @@ class KeyGridView @JvmOverloads constructor(
         // every key rectangle on every frame of the drag.
         val previousRowHeight = rowHeight
         val previousGap = gap
+        val previousShape = keyShape
         rowHeight = theme.rowHeightDp * density
         gap = theme.keyGapDp * density
         corner = theme.cornerRadiusDp * density
 
-        if (rowHeight != previousRowHeight || gap != previousGap) rebuildGeometry()
+        keyShape = theme.keyShape
+        if (rowHeight != previousRowHeight || gap != previousGap || keyShape != previousShape) {
+            rebuildGeometry()
+        }
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -203,6 +210,7 @@ class KeyGridView @JvmOverloads constructor(
 
     private fun rebuildGeometry() {
         rects.clear()
+        keyPaths.clear()
         keys.clear()
         val w = width.toFloat()
         val h = height.toFloat()
@@ -222,7 +230,9 @@ class KeyGridView @JvmOverloads constructor(
 
             for (key in row) {
                 val keyWidth = available * (key.widthWeight / totalWeight)
-                rects.add(RectF(left, top, left + keyWidth, top + rowHeightPx))
+                val rect = RectF(left, top, left + keyWidth, top + rowHeightPx)
+                rects.add(rect)
+                keyPaths.add(buildKeyPath(rect))
                 keys.add(key)
                 left += keyWidth + gap
             }
@@ -234,7 +244,7 @@ class KeyGridView @JvmOverloads constructor(
         val count = rects.size
         for (i in 0 until count) {
             val r = rects[i]
-            canvas.drawRoundRect(r, corner, corner, if (i == pressedIndex) pressedPaint else keyPaint)
+            canvas.drawPath(keyPaths[i], if (i == pressedIndex) pressedPaint else keyPaint)
 
             val label = keys[i].label
             if (label.isEmpty()) continue
@@ -245,6 +255,31 @@ class KeyGridView @JvmOverloads constructor(
 
         if (gliding) canvas.drawPath(glideTrail, trailPaint)
         if (popupKeys.isNotEmpty()) drawPopup(canvas)
+    }
+
+    /**
+     * A hexagon with flat top and bottom and points at the middle of each side,
+     * so neighbouring keys share an edge and the centre of every key is the only
+     * place the shape is widest.
+     */
+    private fun buildKeyPath(rect: RectF): Path {
+        val path = Path()
+        if (keyShape == KeyShape.ROUNDED) {
+            path.addRoundRect(rect, corner, corner, Path.Direction.CW)
+            return path
+        }
+        val width = rect.width()
+        val centreY = rect.centerY()
+        val point = width * 0.17f
+        val shoulder = width * 0.33f
+        path.moveTo(rect.left + point, centreY)
+        path.lineTo(rect.left + shoulder, rect.top)
+        path.lineTo(rect.right - shoulder, rect.top)
+        path.lineTo(rect.right - point, centreY)
+        path.lineTo(rect.right - shoulder, rect.bottom)
+        path.lineTo(rect.left + shoulder, rect.bottom)
+        path.close()
+        return path
     }
 
     private fun drawPopup(canvas: Canvas) {

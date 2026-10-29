@@ -41,6 +41,7 @@ import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.abode.core.common.theme.KeyShape
 import dev.abode.core.common.theme.KeyboardTheme
 import dev.abode.core.common.theme.ThemePresets
 import dev.abode.data.ThemePreferences
@@ -113,6 +114,16 @@ fun ThemeEditorScreen(onBack: () -> Unit) {
                 AssistChip(
                     onClick = { update(preset) },
                     label = { Text(preset.name) },
+                )
+            }
+        }
+
+        Text("Key shape", style = MaterialTheme.typography.titleSmall)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            KeyShape.entries.forEach { shape ->
+                AssistChip(
+                    onClick = { update(theme.copy(keyShape = shape)) },
+                    label = { Text(if (shape == KeyShape.HEXAGON) "Hexagon" else "Rounded") },
                 )
             }
         }
