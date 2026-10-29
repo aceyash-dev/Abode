@@ -17,9 +17,9 @@ data class KeyboardTheme(
     val accent: Int = 0xFFE8641A.toInt(),
     /** Absolute path to a font file the user imported, or null for the system face. */
     val fontPath: String? = null,
-    val cornerRadiusDp: Float = 7f,
-    val keyGapDp: Float = 4f,
-    val rowHeightDp: Float = 50f,
+    val cornerRadiusDp: Float = 12f,
+    val keyGapDp: Float = 6f,
+    val rowHeightDp: Float = 52f,
 ) {
     companion object {
         /** Role -> human label, in the order the editor shows them. */

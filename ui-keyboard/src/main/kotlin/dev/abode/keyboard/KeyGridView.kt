@@ -3,6 +3,7 @@ package dev.abode.keyboard
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.os.Handler
@@ -45,11 +46,12 @@ object ThemeTypeface {
  *    is what [invalidateKey] does. Repainting 40 keys on every touch is the
  *    single most common reason a custom keyboard feels heavy.
  *
- * Long press: hold a key with alternates and a popup strip opens above it; slide
- * to pick, lift to commit.
+ * Three gestures share this one touch stream, in this order of precedence:
+ *  1. Long press on a key with alternates opens the popup strip.
+ *  2. A swipe that leaves the starting key becomes a glide; lifting decodes it.
+ *  3. Anything else is a key press, committed on touch-up.
  *
- * Every visual property comes from [theme], so custom colours and a custom font
- * need no code change here — only a new theme object.
+ * Every visual property comes from [theme].
  */
 class KeyGridView @JvmOverloads constructor(
     context: Context,
@@ -62,6 +64,12 @@ class KeyGridView @JvmOverloads constructor(
 
         /** Fires on touch-up, or when a long-press alternate is chosen. */
         fun onKeyUp(key: Key)
+
+        /** Fires while a key is held, after the first repeat delay. */
+        fun onKeyRepeat(key: Key)
+
+        /** Fires on lift after a swipe across the keys. */
+        fun onGlide(keys: List<Key>)
     }
 
     var listener: Listener? = null
@@ -86,9 +94,9 @@ class KeyGridView @JvmOverloads constructor(
         }
 
     private val density = resources.displayMetrics.density
-    private var rowHeight = 50f * density
-    private var gap = 4f * density
-    private var corner = 7f * density
+    private var rowHeight = 52f * density
+    private var gap = 6f * density
+    private var corner = 12f * density
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
     private val rects = ArrayList<RectF>(64)
@@ -104,19 +112,43 @@ class KeyGridView @JvmOverloads constructor(
     private var downY = 0f
     private var longPressFired = false
 
+    // Glide state
+    private var gliding = false
+    private val glideTrail = Path()
+    private val glideKeys = ArrayList<Key>(12)
+    private var lastGlideX = 0f
+    private var lastGlideY = 0f
+
+    // Repeat state (delete held down)
+    private var repeatKey: Key? = null
+
     private val longPress = Runnable {
         val index = pressedIndex
         if (index < 0 || index >= keys.size) return@Runnable
         val key = keys[index]
         if (!key.hasAlternates) return@Runnable
         longPressFired = true
+        cancelRepeat()
         openPopup(index, key)
+    }
+
+    private val repeat = object : Runnable {
+        override fun run() {
+            val key = repeatKey ?: return
+            listener?.onKeyRepeat(key)
+            handler.postDelayed(this, REPEAT_INTERVAL_MS)
+        }
     }
 
     private val keyPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val pressedPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val popupPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val popupSelectedPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val trailPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
     private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
         textSize = 15f * resources.displayMetrics.scaledDensity
@@ -136,6 +168,8 @@ class KeyGridView @JvmOverloads constructor(
         labelPaint.color = theme.keyLabel
         labelPaint.typeface = ThemeTypeface.forTheme(theme.fontPath)
             ?: Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        trailPaint.color = theme.accent
+        trailPaint.strokeWidth = 4f * density
 
         rowHeight = theme.rowHeightDp * density
         gap = theme.keyGapDp * density
@@ -158,6 +192,7 @@ class KeyGridView @JvmOverloads constructor(
 
     override fun onDetachedFromWindow() {
         handler.removeCallbacks(longPress)
+        cancelRepeat()
         super.onDetachedFromWindow()
     }
 
@@ -203,6 +238,7 @@ class KeyGridView @JvmOverloads constructor(
             canvas.drawText(label, r.centerX(), baseline, labelPaint)
         }
 
+        if (gliding) canvas.drawPath(glideTrail, trailPaint)
         if (popupKeys.isNotEmpty()) drawPopup(canvas)
     }
 
@@ -228,9 +264,18 @@ class KeyGridView @JvmOverloads constructor(
                 downX = event.x
                 downY = event.y
                 longPressFired = false
+                gliding = false
+                glideKeys.clear()
+                glideTrail.reset()
+                glideTrail.moveTo(event.x, event.y)
+                lastGlideX = event.x
+                lastGlideY = event.y
+
                 setPressedKey(indexAt(event.x, event.y))
-                if (pressedIndex >= 0 && keys[pressedIndex].hasAlternates) {
-                    handler.postDelayed(longPress, LONG_PRESS_MS)
+                if (pressedIndex >= 0) {
+                    val key = keys[pressedIndex]
+                    if (key.hasAlternates) handler.postDelayed(longPress, LONG_PRESS_MS)
+                    if (key.kind == KeyKind.DELETE) startRepeat(key)
                 }
                 return true
             }
@@ -240,17 +285,45 @@ class KeyGridView @JvmOverloads constructor(
                     updatePopupSelection(event.x, event.y)
                     return true
                 }
-                if (!longPressFired &&
-                    (Math.abs(event.x - downX) > touchSlop || Math.abs(event.y - downY) > touchSlop)
-                ) {
-                    handler.removeCallbacks(longPress)
+
+                if (!longPressFired) {
+                    val moved = Math.abs(event.x - downX) > touchSlop ||
+                        Math.abs(event.y - downY) > touchSlop
+                    if (moved) {
+                        // A swipe, not a press: the delete repeat and the long
+                        // press both belong to a finger that is staying put.
+                        cancelRepeat()
+                        handler.removeCallbacks(longPress)
+                        gliding = true
+                    }
                 }
+
+                if (gliding) {
+                    val index = indexAt(event.x, event.y)
+                    if (index >= 0 && index < keys.size) {
+                        val key = keys[index]
+                        if (glideKeys.lastOrNull() !== key) glideKeys.add(key)
+                    }
+                    glideTrail.quadTo(
+                        lastGlideX,
+                        lastGlideY,
+                        (lastGlideX + event.x) / 2f,
+                        (lastGlideY + event.y) / 2f,
+                    )
+                    glideTrail.lineTo(event.x, event.y)
+                    lastGlideX = event.x
+                    lastGlideY = event.y
+                    invalidate()
+                    return true
+                }
+
                 setPressedKey(indexAt(event.x, event.y))
                 return true
             }
 
             MotionEvent.ACTION_UP -> {
                 handler.removeCallbacks(longPress)
+                cancelRepeat()
 
                 if (popupKeys.isNotEmpty()) {
                     updatePopupSelection(event.x, event.y)
@@ -265,6 +338,17 @@ class KeyGridView @JvmOverloads constructor(
                     return true
                 }
 
+                if (gliding) {
+                    gliding = false
+                    pressedIndex = -1
+                    invalidate()
+                    val word = glideKeys.filter { it.kind == KeyKind.CHARACTER }
+                    if (word.size >= MIN_GLIDE_KEYS) listener?.onGlide(word)
+                    glideKeys.clear()
+                    glideTrail.reset()
+                    return true
+                }
+
                 val index = indexAt(event.x, event.y)
                 pressedIndex = -1
                 invalidate()
@@ -274,13 +358,27 @@ class KeyGridView @JvmOverloads constructor(
 
             MotionEvent.ACTION_CANCEL -> {
                 handler.removeCallbacks(longPress)
+                cancelRepeat()
                 dismissPopup()
+                gliding = false
+                glideKeys.clear()
+                glideTrail.reset()
                 pressedIndex = -1
                 invalidate()
                 return true
             }
         }
         return super.onTouchEvent(event)
+    }
+
+    private fun startRepeat(key: Key) {
+        repeatKey = key
+        handler.postDelayed(repeat, REPEAT_DELAY_MS)
+    }
+
+    private fun cancelRepeat() {
+        repeatKey = null
+        handler.removeCallbacks(repeat)
     }
 
     private fun openPopup(index: Int, key: Key) {
@@ -372,5 +470,8 @@ class KeyGridView @JvmOverloads constructor(
 
     private companion object {
         const val LONG_PRESS_MS = 320L
+        const val REPEAT_DELAY_MS = 400L
+        const val REPEAT_INTERVAL_MS = 55L
+        const val MIN_GLIDE_KEYS = 3
     }
 }

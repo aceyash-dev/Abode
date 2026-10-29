@@ -28,6 +28,7 @@ import dev.abode.keyboard.KeyGridView
 import dev.abode.keyboard.KeyKind
 import dev.abode.keyboard.KeyboardLayout
 import dev.abode.text.DictionaryLoader
+import dev.abode.text.GlideDecoder
 import dev.abode.text.SuggestionEngine
 import dev.abode.voice.SystemVoiceEngine
 import dev.abode.voice.VoiceEvent
@@ -82,6 +83,11 @@ class AbodeInputMethodService : InputMethodService(),
     private lateinit var grid: KeyGridView
     private lateinit var strip: TextView
 
+    private var dictionary: dev.abode.text.TrieDictionary? = null
+    private var glideDecoder: GlideDecoder? = null
+    private var lastCommitWasSpace = false
+    private var sentenceEnded = true
+
     private var voiceEngine: SystemVoiceEngine? = null
     private var listening = false
 
@@ -97,9 +103,11 @@ class AbodeInputMethodService : InputMethodService(),
         // Off the main thread by construction; the trie is not ready on the
         // first keystrokes and that is fine.
         scope.launch {
-            val dictionary = DictionaryLoader(this@AbodeInputMethodService).load()
-            suggestionEngine.setDictionary(dictionary)
-            AbodeLog.i("dictionary loaded: ${dictionary.wordCount} words")
+            val loaded = DictionaryLoader(this@AbodeInputMethodService).load()
+            dictionary = loaded
+            glideDecoder = GlideDecoder(loaded)
+            suggestionEngine.setDictionary(loaded)
+            AbodeLog.i("dictionary loaded: ${loaded.wordCount} words")
         }
 
         scope.launch {
@@ -144,6 +152,8 @@ class AbodeInputMethodService : InputMethodService(),
                 listener = object : KeyGridView.Listener {
                     override fun onKeyDown(key: Key) = this@AbodeInputMethodService.onKeyDown(key)
                     override fun onKeyUp(key: Key) = this@AbodeInputMethodService.onKeyUp(key)
+                    override fun onKeyRepeat(key: Key) = this@AbodeInputMethodService.onKeyDown(key)
+                    override fun onGlide(keys: List<Key>) = this@AbodeInputMethodService.onGlide(keys)
                 }
             }
 
@@ -223,13 +233,11 @@ class AbodeInputMethodService : InputMethodService(),
             KeyKind.CHARACTER -> {
                 commit(key.output)
                 if (shifted) setShift(false)
-                suggestionEngine.onPrefixChanged(currentWordPrefix())
+                trackSentence(key.output)
+                suggestionEngine.onPrefixChanged(currentWordPrefix(), capitalise = sentenceEnded)
             }
 
-            KeyKind.SPACE -> {
-                commit(" ")
-                suggestionEngine.onPrefixChanged("")
-            }
+            KeyKind.SPACE -> handleSpace()
 
             KeyKind.ENTER -> handleEnter()
             KeyKind.SHIFT -> setShift(!shifted)
@@ -240,6 +248,78 @@ class AbodeInputMethodService : InputMethodService(),
             // TODO(M2/M4): clipboard panel and the AI sheet.
             KeyKind.DELETE, KeyKind.CLIPBOARD, KeyKind.AI -> Unit
         }
+    }
+
+    /**
+     * Space is where a word gets finished, so it is where a correction happens.
+     * Double space ends the sentence, which is the habit most people already
+     * have and the cheapest punctuation shortcut there is.
+     */
+    private fun handleSpace() {
+        if (lastCommitWasSpace) {
+            val ic = currentInputConnection ?: return
+            ic.beginBatchEdit()
+            ic.deleteSurroundingText(1, 0)
+            ic.commitText(". ", 1)
+            ic.endBatchEdit()
+            lastCommitWasSpace = false
+            sentenceEnded = true
+            setShift(true)
+            suggestionEngine.onPrefixChanged("", capitalise = true)
+            return
+        }
+
+        autocorrectLastWord()
+        commit(" ")
+        lastCommitWasSpace = true
+        suggestionEngine.onPrefixChanged("", capitalise = sentenceEnded)
+    }
+
+    /** Replaces the word behind the cursor when the dictionary has a near miss. */
+    private fun autocorrectLastWord() {
+        val ic = currentInputConnection ?: return
+        val before = ic.getTextBeforeCursor(40, 0)?.toString() ?: return
+        val word = before.takeLastWhile { it.isLetter() || it == '\'' }
+        if (word.length < 3) return
+
+        val correction = suggestionEngine.autocorrect(word) ?: return
+        if (correction == word) return
+
+        ic.beginBatchEdit()
+        ic.deleteSurroundingText(word.length, 0)
+        ic.commitText(correction, 1)
+        ic.endBatchEdit()
+    }
+
+    /** Tracks whether the next letter should be a capital. */
+    private fun trackSentence(text: String) {
+        val last = text.lastOrNull() ?: return
+        lastCommitWasSpace = last == ' '
+        if (last in ".!?") {
+            sentenceEnded = true
+            setShift(true)
+        } else if (!last.isWhitespace()) {
+            sentenceEnded = false
+        }
+    }
+
+    /**
+     * A swipe is decoded against the dictionary and committed as a finished
+     * word: the finger has already drawn the word, so there is nothing left to
+     * autocomplete.
+     */
+    private fun onGlide(keys: List<Key>) {
+        val decoder = glideDecoder ?: return
+        val path = keys.map { it.output.firstOrNull() ?: return }.filter { it.isLetter() }
+        val word = decoder.decode(path) ?: return
+
+        val capitalise = sentenceEnded
+        val text = if (capitalise) word.replaceFirstChar { it.uppercaseChar() } else word
+        commit("$text ")
+        lastCommitWasSpace = true
+        sentenceEnded = false
+        setShift(false)
+        suggestionEngine.onPrefixChanged("", capitalise = false)
     }
 
     private fun commit(text: String) {
