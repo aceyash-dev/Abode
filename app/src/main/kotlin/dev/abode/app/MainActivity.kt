@@ -36,10 +36,10 @@ import androidx.compose.ui.unit.dp
 import dev.abode.app.theme.ThemeEditorScreen
 import dev.abode.core.ui.AbodeTheme
 import dev.abode.voice.CapabilityProbe
-import br.com.devsrsouza.compose.icons.tabler.TablerIcons
-import br.com.devsrsouza.compose.icons.tabler.filled.Keyboard
-import br.com.devsrsouza.compose.icons.tabler.filled.Microphone
-import br.com.devsrsouza.compose.icons.tabler.filled.Palette
+import compose.icons.TablerIcons
+import compose.icons.tablericons.Keyboard
+import compose.icons.tablericons.Microphone
+import compose.icons.tablericons.Palette
 
 class MainActivity : ComponentActivity() {
 
