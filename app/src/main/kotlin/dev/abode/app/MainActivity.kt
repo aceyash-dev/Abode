@@ -75,7 +75,7 @@ private fun StatusScreen(onCustomise: () -> Unit) {
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
-                imageVector = TablerIcons.Filled.Keyboard,
+                imageVector = TablerIcons.Keyboard,
                 contentDescription = null,
                 modifier = Modifier.size(36.dp),
                 tint = MaterialTheme.colorScheme.primary,
@@ -109,7 +109,7 @@ private fun StatusScreen(onCustomise: () -> Unit) {
                 Text(if (enabled) "Keyboard is enabled in system settings." else "Keyboard is not enabled yet.")
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = TablerIcons.Filled.Microphone,
+                        imageVector = TablerIcons.Microphone,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp),
                     )
@@ -134,13 +134,13 @@ private fun StatusScreen(onCustomise: () -> Unit) {
             },
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Icon(TablerIcons.Filled.Keyboard, contentDescription = null, modifier = Modifier.size(18.dp))
+            Icon(TablerIcons.Keyboard, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
             Text("Open keyboard settings")
         }
 
         OutlinedButton(onClick = onCustomise, modifier = Modifier.fillMaxWidth()) {
-            Icon(TablerIcons.Filled.Palette, contentDescription = null, modifier = Modifier.size(18.dp))
+            Icon(TablerIcons.Palette, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
             Text("Appearance — colours, font, shape")
         }
