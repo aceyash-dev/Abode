@@ -17,6 +17,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // Hugeicons ships through JitPack, not Maven Central.
+        maven(url = "https://jitpack.io")
     }
 }
 

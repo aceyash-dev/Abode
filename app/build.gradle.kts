@@ -32,8 +32,13 @@ android {
         applicationId = "dev.abode"
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        // The commit the build came from. CI passes it; a local build says "dev"
+        // rather than claiming a revision it cannot prove.
+        val gitSha = (project.findProperty("gitSha") as String?)?.take(7) ?: "dev"
+        buildConfigField("String", "GIT_SHA", "\"$gitSha\"")
+
+        versionCode = 2
+        versionName = "0.2.0"
     }
 
     signingConfigs {
@@ -65,6 +70,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     compileOptions {
@@ -98,6 +104,7 @@ dependencies {
     implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.compose.material3)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.hugeicons.compose)
 
     testImplementation(libs.junit)
 }

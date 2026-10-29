@@ -26,10 +26,10 @@ jobs:
           gradle-version: '8.9'
 
       - name: Unit tests
-        run: gradle :engine-text:testDebugUnitTest --stacktrace
+        run: gradle :engine-text:testDebugUnitTest -PgitSha=${{ github.sha }} --stacktrace
 
       - name: Assemble debug APK
-        run: gradle :app:assembleDebug --stacktrace
+        run: gradle :app:assembleDebug -PgitSha=${{ github.sha }} --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
