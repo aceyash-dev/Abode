@@ -26,7 +26,7 @@ val hasReleaseKeystore = !releaseStoreFile.isNullOrBlank()
 
 android {
     namespace = "dev.abode.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "dev.abode"
