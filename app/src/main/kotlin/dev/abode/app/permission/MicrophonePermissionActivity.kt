@@ -4,7 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.core.app.ActivityCompat
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 
 /**
@@ -13,36 +13,30 @@ import androidx.core.content.ContextCompat
  * and on grant the keyboard resumes listening in the same field.
  *
  * Same app UID, so the grant covers the service.
+ *
+ * The launcher contract rather than overriding onRequestPermissionsResult: the
+ * platform's callback signature has moved under androidx.activity, and the
+ * contract is the shape that has not.
  */
 class MicrophonePermissionActivity : ComponentActivity() {
+
+    private val requestMicrophone =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            finishWith(if (granted) RESULT_OK else RESULT_CANCELED)
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
+        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
             PackageManager.PERMISSION_GRANTED
-        ) {
+
+        if (granted) {
             finishWith(RESULT_OK)
             return
         }
 
-        ActivityCompat.requestPermissions(
-            this,
-            arrayOf(Manifest.permission.RECORD_AUDIO),
-            REQUEST_CODE,
-        )
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray,
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode != REQUEST_CODE) return
-
-        val granted = grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED
-        finishWith(if (granted) RESULT_OK else RESULT_CANCELED)
+        requestMicrophone.launch(Manifest.permission.RECORD_AUDIO)
     }
 
     private fun finishWith(result: Int) {
@@ -50,9 +44,5 @@ class MicrophonePermissionActivity : ComponentActivity() {
         finish()
         @Suppress("DEPRECATION")
         overridePendingTransition(0, 0)
-    }
-
-    private companion object {
-        const val REQUEST_CODE = 4001
     }
 }

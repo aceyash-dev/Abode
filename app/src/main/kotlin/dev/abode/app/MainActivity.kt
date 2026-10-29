@@ -29,7 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import dev.abode.app.theme.ThemeEditorScreen
-import dev.abode.core.ui.OnkTheme
+import dev.abode.core.ui.AbodeTheme
 import dev.abode.voice.CapabilityProbe
 
 class MainActivity : ComponentActivity() {
@@ -37,7 +37,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            OnkTheme {
+            AbodeTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     var showAppearance by remember { mutableStateOf(false) }
 
