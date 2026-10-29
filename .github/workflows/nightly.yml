@@ -62,7 +62,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: abode-nightly
-          path: ${{ env.APK }}
+          path: out/*.apk
           if-no-files-found: error
           retention-days: 14
 
@@ -74,13 +74,11 @@ jobs:
           # Re-running a night replaces that night's release rather than failing
           # on an existing tag.
           gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+          note="Automated build of ${GITHUB_SHA:0:7} on $(date -u +%Y-%m-%d)."
+          note="$note Debug-signed: uninstall any Play build before installing this one."
+          note="$note Not a stable release - this is whatever main looked like at midnight IST."
           gh release create "$TAG" "$APK" \
             --title "Nightly $STAMP" \
             --target "$GITHUB_SHA" \
             --prerelease \
-            --notes "Automated build of \`${GITHUB_SHA::7}\` on $(date -u +%Y-%m-%d).
-
-          Debug-signed, so it installs beside nothing and cannot upgrade a Play
-          build — uninstall the other copy first.
-
-          Not a stable release. It is whatever main looked like at midnight IST."
+            --notes "$note"
