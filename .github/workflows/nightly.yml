@@ -1,0 +1,86 @@
+name: Nightly
+
+# One build a day from main, published as a prerelease so it never looks like a
+# stable download. The point is a runnable APK every morning without anyone
+# tagging anything.
+on:
+  schedule:
+    # 18:30 UTC — 00:00 IST, so the nightly lands at the start of the day it is
+    # named for in the timezone most of these users are in.
+    - cron: '30 18 * * *'
+  workflow_dispatch:
+
+# Needed to create the release and the tag.
+permissions:
+  contents: write
+
+# A slow night must not stack up behind the next one.
+concurrency:
+  group: nightly
+  cancel-in-progress: true
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Unit tests
+        run: gradle :engine-text:testDebugUnitTest --stacktrace
+
+      - name: Build debug APK
+        run: gradle :app:assembleDebug --stacktrace
+
+      - name: Name the artefact
+        run: |
+          set -euo pipefail
+          stamp="$(date -u +%Y%m%d)"
+          sha="$(git rev-parse --short HEAD)"
+          mkdir -p out
+          cp app/build/outputs/apk/debug/*.apk "out/abode-nightly-${stamp}-${sha}.apk"
+          echo "TAG=nightly-${stamp}" >> "$GITHUB_ENV"
+          echo "APK=out/abode-nightly-${stamp}-${sha}.apk" >> "$GITHUB_ENV"
+          echo "STAMP=${stamp}" >> "$GITHUB_ENV"
+
+      # The artefact is kept either way, so a failed publish still leaves the
+      # build downloadable from the run.
+      - name: Upload build artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: abode-nightly
+          path: ${{ env.APK }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Re-running a night replaces that night's release rather than failing
+          # on an existing tag.
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$TAG" "$APK" \
+            --title "Nightly $STAMP" \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --notes "Automated build of \`${GITHUB_SHA::7}\` on $(date -u +%Y-%m-%d).
+
+          Debug-signed, so it installs beside nothing and cannot upgrade a Play
+          build — uninstall the other copy first.
+
+          Not a stable release. It is whatever main looked like at midnight IST."

@@ -35,7 +35,8 @@ object CapabilityProbe {
         val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         val memoryInfo = ActivityManager.MemoryInfo().also { activityManager.getMemoryInfo(it) }
 
-        val totalRamGb = memoryInfo.totalMem.toDouble() / (1024.0 * 1024.0 * 1024.0)
+        val totalRamGb =
+            (memoryInfo.totalMem.toDouble() / (1024.0 * 1024.0 * 1024.0)).toFloat()
         val cores = Runtime.getRuntime().availableProcessors()
         val freeDiskMb = runCatching {
             StatFs(context.noBackupFilesDir.absolutePath).availableBytes / (1024 * 1024)
