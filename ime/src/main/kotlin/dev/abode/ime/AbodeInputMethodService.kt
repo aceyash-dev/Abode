@@ -21,6 +21,8 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import dev.abode.core.common.AbodeDispatchers
 import dev.abode.core.common.AbodeLog
+import dev.abode.core.common.theme.KeyboardTheme
+import dev.abode.data.ThemePreferences
 import dev.abode.keyboard.Key
 import dev.abode.keyboard.KeyGridView
 import dev.abode.keyboard.KeyKind
@@ -72,6 +74,8 @@ class AbodeInputMethodService : InputMethodService(),
         get() = savedStateController.savedStateRegistry
 
     private val scope = CoroutineScope(SupervisorJob() + AbodeDispatchers.main)
+    private val themePreferences by lazy { ThemePreferences(this) }
+    private var currentTheme: KeyboardTheme = KeyboardTheme()
     private val suggestionEngine = SuggestionEngine(scope)
 
     private lateinit var root: LinearLayout
@@ -109,6 +113,10 @@ class AbodeInputMethodService : InputMethodService(),
         val voice = SystemVoiceEngine(this)
         voiceEngine = voice
         scope.launch { voice.events.collect(::onVoiceEvent) }
+
+        scope.launch {
+            themePreferences.theme.collect { theme -> applyTheme(theme) }
+        }
     }
 
     override fun onCreateInputView(): View {
@@ -144,6 +152,8 @@ class AbodeInputMethodService : InputMethodService(),
                 addView(strip, LinearLayout.LayoutParams(MATCH_PARENT, dp(34)))
                 addView(grid, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
             }
+
+            applyTheme(currentTheme)
 
             root.viewTreeObserver.addOnPreDrawListener {
                 if (showStartedAt != 0L) {
@@ -270,6 +280,18 @@ class AbodeInputMethodService : InputMethodService(),
         symbolsMode = !symbolsMode
         if (!symbolsMode) shifted = false
         applyLayout()
+    }
+
+    /**
+     * Custom colours and a custom font are applied by handing the view a new
+     * theme. Nothing in the rendering path knows about individual properties,
+     * so a theme change never touches layout code.
+     */
+    private fun applyTheme(theme: KeyboardTheme) {
+        currentTheme = theme
+        if (::grid.isInitialized) grid.theme = theme
+        if (::root.isInitialized) root.setBackgroundColor(theme.background)
+        if (::strip.isInitialized) strip.setTextColor(theme.keyLabel)
     }
 
     private fun applyLayout() {

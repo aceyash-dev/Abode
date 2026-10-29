@@ -17,14 +17,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import dev.abode.core.ui.AbodeTheme
+import dev.abode.app.theme.ThemeEditorScreen
+import dev.abode.core.ui.OnkTheme
 import dev.abode.voice.CapabilityProbe
 
 class MainActivity : ComponentActivity() {
@@ -32,9 +37,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            AbodeTheme {
+            OnkTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    StatusScreen()
+                    var showAppearance by remember { mutableStateOf(false) }
+
+                    if (showAppearance) {
+                        ThemeEditorScreen(onBack = { showAppearance = false })
+                    } else {
+                        StatusScreen(onCustomise = { showAppearance = true })
+                    }
                 }
             }
         }
@@ -42,7 +53,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun StatusScreen() {
+private fun StatusScreen(onCustomise: () -> Unit) {
     val context = LocalContext.current
     val enabled = remember { isAbodeEnabled(context) }
     val capabilities = remember { CapabilityProbe.probe(context) }
@@ -90,9 +101,13 @@ private fun StatusScreen() {
             Text("Open keyboard settings")
         }
 
+        OutlinedButton(onClick = onCustomise, modifier = Modifier.fillMaxWidth()) {
+            Text("Appearance — colours, font, shape")
+        }
+
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "Clipboard history, snippets and the AI sheet land in M2 to M4. See README for the roadmap.",
+            text = "Clipboard history and the AI sheet land in M2 to M4. See README for the roadmap.",
             style = MaterialTheme.typography.bodySmall,
         )
     }

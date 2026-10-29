@@ -12,6 +12,28 @@ import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
+import dev.abode.core.common.theme.KeyboardTheme
+import java.io.File
+
+/**
+ * Caches typefaces loaded from user-imported font files. Parsing a font is
+ * expensive; doing it per keystroke or per show would be visible.
+ */
+object ThemeTypeface {
+    private val cache = HashMap<String, Typeface>()
+
+    fun forTheme(path: String?): Typeface? {
+        if (path.isNullOrBlank()) return null
+        cache[path]?.let { return it }
+        val file = File(path)
+        if (!file.exists()) return null
+        return runCatching { Typeface.createFromFile(file) }
+            .onSuccess { cache[path] = it }
+            .getOrNull()
+    }
+
+    fun clear() = cache.clear()
+}
 
 /**
  * The whole key grid as ONE view, drawn in a single Canvas pass and hit-tested
@@ -24,11 +46,10 @@ import android.view.ViewConfiguration
  *    single most common reason a custom keyboard feels heavy.
  *
  * Long press: hold a key with alternates and a popup strip opens above it; slide
- * to pick, lift to commit. This is why the number row is a convenience rather
- * than a requirement.
+ * to pick, lift to commit.
  *
- * Allocation rule: nothing in onDraw allocates. Paints and Rects are created
- * once; the geometry list is rebuilt only on size or layout change.
+ * Every visual property comes from [theme], so custom colours and a custom font
+ * need no code change here — only a new theme object.
  */
 class KeyGridView @JvmOverloads constructor(
     context: Context,
@@ -55,10 +76,19 @@ class KeyGridView @JvmOverloads constructor(
             invalidate()
         }
 
+    var theme: KeyboardTheme = KeyboardTheme()
+        set(value) {
+            if (field == value) return
+            field = value
+            applyTheme()
+            requestLayout()
+            invalidate()
+        }
+
     private val density = resources.displayMetrics.density
-    private val rowHeight = 50f * density
-    private val gap = 4f * density
-    private val corner = 7f * density
+    private var rowHeight = 50f * density
+    private var gap = 4f * density
+    private var corner = 7f * density
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
     private val rects = ArrayList<RectF>(64)
@@ -70,7 +100,6 @@ class KeyGridView @JvmOverloads constructor(
     private val popupRects = ArrayList<RectF>(6)
     private var popupKeys: List<Key> = emptyList()
     private var popupSelected = -1
-    private var popupAbove = true
     private var downX = 0f
     private var downY = 0f
     private var longPressFired = false
@@ -84,20 +113,35 @@ class KeyGridView @JvmOverloads constructor(
         openPopup(index, key)
     }
 
-    private val keyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = COLOR_KEY }
-    private val pressedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = COLOR_KEY_PRESSED }
-    private val popupPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = COLOR_POPUP }
-    private val popupSelectedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = COLOR_KEY_PRESSED }
+    private val keyPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val pressedPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val popupPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val popupSelectedPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = COLOR_LABEL
         textAlign = Paint.Align.CENTER
         textSize = 15f * resources.displayMetrics.scaledDensity
-        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
     }
 
     init {
         isClickable = true
         isHapticFeedbackEnabled = true
+        applyTheme()
+    }
+
+    fun applyTheme() {
+        keyPaint.color = theme.keyBackground
+        pressedPaint.color = theme.keyPressed
+        popupPaint.color = theme.popupBackground
+        popupSelectedPaint.color = theme.keyPressed
+        labelPaint.color = theme.keyLabel
+        labelPaint.typeface = ThemeTypeface.forTheme(theme.fontPath)
+            ?: Typeface.create("sans-serif-medium", Typeface.NORMAL)
+
+        rowHeight = theme.rowHeightDp * density
+        gap = theme.keyGapDp * density
+        corner = theme.cornerRadiusDp * density
+
+        rebuildGeometry()
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -253,8 +297,8 @@ class KeyGridView @JvmOverloads constructor(
         val height = anchor.height() * 1.15f
 
         // Flip below the key when there is no room above it (the number row).
-        popupAbove = anchor.top - height - gap >= 0f
-        val top = if (popupAbove) anchor.top - height - gap else anchor.bottom + gap
+        val above = anchor.top - height - gap >= 0f
+        val top = if (above) anchor.top - height - gap else anchor.bottom + gap
 
         for (i in popupKeys.indices) {
             val left = startX + i * cellWidth
@@ -328,9 +372,5 @@ class KeyGridView @JvmOverloads constructor(
 
     private companion object {
         const val LONG_PRESS_MS = 320L
-        const val COLOR_KEY = 0xFFF4F4F5.toInt()
-        const val COLOR_KEY_PRESSED = 0xFFE8641A.toInt()
-        const val COLOR_LABEL = 0xFF1A1A1A.toInt()
-        const val COLOR_POPUP = 0xFFFFFFFF.toInt()
     }
 }
