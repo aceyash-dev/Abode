@@ -7,6 +7,7 @@ enum class KeyKind {
     DELETE,
     SHIFT,
     SYMBOLS,
+    NUMERIC,
     GLOBE,
     VOICE,
     CLIPBOARD,

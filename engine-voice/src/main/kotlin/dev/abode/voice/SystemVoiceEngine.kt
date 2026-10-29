@@ -48,6 +48,11 @@ class SystemVoiceEngine(private val context: Context) : VoiceEngine {
         override fun onEndOfSpeech() = Unit
 
         override fun onError(error: Int) {
+            // A recogniser that errored can be left in a state where every later
+            // startListening is refused, so it is discarded rather than reused:
+            // the next tap builds a fresh one. Creating it is cheap; a mic key
+            // that works exactly once is not.
+            release()
             _events.tryEmit(VoiceEvent.Failed(error, describe(error)))
         }
 

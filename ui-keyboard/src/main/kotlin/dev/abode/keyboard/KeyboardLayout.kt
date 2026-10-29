@@ -113,6 +113,36 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
             ),
         )
 
+        /**
+         * The numeric page: a calculator's worth of digits and the operators
+         * people actually type into forms, with nothing else in the way.
+         */
+        fun numeric(): KeyboardLayout = KeyboardLayout(
+            listOf(
+                listOf("7", "8", "9").map { Key(it) } + listOf(
+                    Key("÷", KeyKind.CHARACTER, output = "÷", widthWeight = 1f),
+                    Key("⌫", KeyKind.DELETE, widthWeight = 1.4f),
+                ),
+                listOf("4", "5", "6").map { Key(it) } + listOf(
+                    Key("×", KeyKind.CHARACTER, output = "×", widthWeight = 1f),
+                    Key("(", KeyKind.CHARACTER, output = "(", widthWeight = 1.4f),
+                ),
+                listOf("1", "2", "3").map { Key(it) } + listOf(
+                    Key("−", KeyKind.CHARACTER, output = "-", widthWeight = 1f),
+                    Key(")", KeyKind.CHARACTER, output = ")", widthWeight = 1.4f),
+                ),
+                listOf(
+                    Key("ABC", KeyKind.NUMERIC, widthWeight = 1.4f),
+                    Key("0", KeyKind.CHARACTER, output = "0", widthWeight = 1.2f),
+                    Key(",", KeyKind.CHARACTER, output = ",", widthWeight = 1f),
+                    Key(".", KeyKind.CHARACTER, output = ".", widthWeight = 1f),
+                    Key("+", KeyKind.CHARACTER, output = "+", widthWeight = 1f),
+                    Key("=", KeyKind.CHARACTER, output = "=", widthWeight = 1f),
+                    Key("return", KeyKind.ENTER, widthWeight = 1.8f),
+                ),
+            ),
+        )
+
         /** The 123 page. */
         fun symbols(shifted: Boolean = false): KeyboardLayout {
             fun digits(row: String): List<Key> = row.map { c ->
@@ -127,13 +157,15 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
                 listOf(
                     digits("1234567890"),
                     listOf("-", "/", ":", ";", "(", ")", "₹", "&", "@", "\"").map { Key(it) },
+                    listOf("%", "#", "+", "=", "*", "~", "|", "\\", "<", ">").map { Key(it) },
                     listOf(
                         Key("⇧", KeyKind.SHIFT, widthWeight = 1.5f),
                     ) + listOf("#", "+", "=", ".", ",", "?", "!").map { Key(it) } + listOf(
                         Key("⌫", KeyKind.DELETE, widthWeight = 1.5f),
                     ),
                     listOf(
-                        Key("ABC", KeyKind.SYMBOLS, widthWeight = 1.4f),
+                        Key("ABC", KeyKind.SYMBOLS, widthWeight = 1.2f),
+                        Key("123", KeyKind.NUMERIC, widthWeight = 1.2f),
                         Key("🌐", KeyKind.GLOBE, widthWeight = 1.1f),
                         Key("space", KeyKind.SPACE, output = " ", widthWeight = 4.2f),
                         Key("🎤", KeyKind.VOICE, widthWeight = 1.2f),

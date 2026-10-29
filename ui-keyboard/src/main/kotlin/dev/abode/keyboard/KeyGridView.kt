@@ -171,11 +171,16 @@ class KeyGridView @JvmOverloads constructor(
         trailPaint.color = theme.accent
         trailPaint.strokeWidth = 4f * density
 
+        // Geometry is only rebuilt when the shape actually moved. A colour-only
+        // change — which is what dragging a picker produces — used to rebuild
+        // every key rectangle on every frame of the drag.
+        val previousRowHeight = rowHeight
+        val previousGap = gap
         rowHeight = theme.rowHeightDp * density
         gap = theme.keyGapDp * density
         corner = theme.cornerRadiusDp * density
 
-        rebuildGeometry()
+        if (rowHeight != previousRowHeight || gap != previousGap) rebuildGeometry()
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {

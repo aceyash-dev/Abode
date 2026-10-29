@@ -96,6 +96,7 @@ class AbodeInputMethodService : InputMethodService(),
     private var shifted = false
     private var symbolsMode = false
     private var toolbarMode = false
+    private var numericMode = false
     private var transliterate = false
     private val latinBuffer = StringBuilder()
     private var showStartedAt = 0L
@@ -193,6 +194,7 @@ class AbodeInputMethodService : InputMethodService(),
 
         symbolsMode = false
         toolbarMode = false
+        numericMode = false
         latinBuffer.setLength(0)
         transliterate = isDevanagariSubtype()
         setShift(false)
@@ -258,6 +260,7 @@ class AbodeInputMethodService : InputMethodService(),
             KeyKind.ENTER -> handleEnter()
             KeyKind.SHIFT -> setShift(!shifted)
             KeyKind.SYMBOLS -> toggleSymbols()
+            KeyKind.NUMERIC -> toggleNumeric()
             KeyKind.GLOBE -> switchInputMethod()
             KeyKind.VOICE -> toggleListening()
             KeyKind.EDIT -> toggleToolbar()
@@ -405,9 +408,19 @@ class AbodeInputMethodService : InputMethodService(),
         if (!::grid.isInitialized) return
         grid.keyboardLayout = when {
             toolbarMode -> KeyboardLayout.editing()
+            numericMode -> KeyboardLayout.numeric()
             symbolsMode -> KeyboardLayout.symbols(shifted)
             else -> KeyboardLayout.qwerty(shifted, numberRow = true)
         }
+    }
+
+    private fun toggleNumeric() {
+        numericMode = !numericMode
+        if (numericMode) {
+            symbolsMode = false
+            shifted = false
+        }
+        applyLayout()
     }
 
     private fun toggleToolbar() {
@@ -478,17 +491,33 @@ class AbodeInputMethodService : InputMethodService(),
     // ---------------------------------------------------------------- voice
 
     private fun toggleListening() {
-        val engine = voiceEngine ?: return
+        val engine = voiceEngine
+        if (engine == null) {
+            setStatus("Voice is not available")
+            return
+        }
         if (listening) {
             stopListening()
+            setStatus("")
             return
         }
         if (isSensitiveField()) {
             AbodeLog.i("voice suppressed in a sensitive field")
+            setStatus("Voice is off in password fields")
             return
         }
         listening = true
+        setStatus("Listening\u2026")
         engine.start(Locale.getDefault())
+    }
+
+    /**
+     * The strip doubles as the keyboard's one line of feedback. Voice failures
+     * used to go to logcat and nowhere else, which on a phone means the mic key
+     * simply did nothing.
+     */
+    private fun setStatus(text: String) {
+        if (::strip.isInitialized) strip.text = text
     }
 
     private fun stopListening() {
@@ -509,19 +538,25 @@ class AbodeInputMethodService : InputMethodService(),
                 if (event.text.isNotEmpty()) ic.commitText(event.text, 1)
                 ic.finishComposingText()
                 listening = false
+                setStatus("")
             }
 
             is VoiceEvent.PermissionRequired -> {
                 listening = false
+                setStatus("Microphone permission needed")
                 requestMicrophonePermission()
             }
 
             is VoiceEvent.Failed -> {
                 listening = false
+                setStatus(event.message)
                 AbodeLog.w("voice failed: ${event.code} ${event.message}")
             }
 
-            VoiceEvent.Ready -> AbodeLog.d("voice ready")
+            VoiceEvent.Ready -> {
+                setStatus("Listening\u2026")
+                AbodeLog.d("voice ready")
+            }
         }
     }
 
