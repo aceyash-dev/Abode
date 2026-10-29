@@ -1,5 +1,6 @@
 package dev.abode.ime
 
+import android.content.Intent
 import android.inputmethodservice.InputMethodService
 import android.os.SystemClock
 import android.text.InputType
@@ -26,6 +27,9 @@ import dev.abode.keyboard.KeyKind
 import dev.abode.keyboard.KeyboardLayout
 import dev.abode.text.DictionaryLoader
 import dev.abode.text.SuggestionEngine
+import dev.abode.voice.SystemVoiceEngine
+import dev.abode.voice.VoiceEvent
+import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -49,6 +53,9 @@ import kotlinx.coroutines.launch
  *  3. Nothing blocking happens here. The dictionary loads in a coroutine, the
  *     prediction is asked for after the character is committed, and the
  *     latency of the show path is logged so it can be tracked over time.
+ *
+ * Characters commit on touch-UP, not down, so that a long press can offer
+ * alternates without the primary character already having been typed.
  */
 class AbodeInputMethodService : InputMethodService(),
     LifecycleOwner,
@@ -71,7 +78,11 @@ class AbodeInputMethodService : InputMethodService(),
     private lateinit var grid: KeyGridView
     private lateinit var strip: TextView
 
+    private var voiceEngine: SystemVoiceEngine? = null
+    private var listening = false
+
     private var shifted = false
+    private var symbolsMode = false
     private var showStartedAt = 0L
 
     override fun onCreate() {
@@ -94,6 +105,10 @@ class AbodeInputMethodService : InputMethodService(),
                 }
             }
         }
+
+        val voice = SystemVoiceEngine(this)
+        voiceEngine = voice
+        scope.launch { voice.events.collect(::onVoiceEvent) }
     }
 
     override fun onCreateInputView(): View {
@@ -119,14 +134,14 @@ class AbodeInputMethodService : InputMethodService(),
             grid = KeyGridView(this).apply {
                 keyboardLayout = KeyboardLayout.qwerty()
                 listener = object : KeyGridView.Listener {
-                    override fun onKeyPressed(key: Key) = this@AbodeInputMethodService.onKeyPressed(key)
-                    override fun onKeyReleased(key: Key) = this@AbodeInputMethodService.onKeyReleased(key)
+                    override fun onKeyDown(key: Key) = this@AbodeInputMethodService.onKeyDown(key)
+                    override fun onKeyUp(key: Key) = this@AbodeInputMethodService.onKeyUp(key)
                 }
             }
 
             root = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(strip, LinearLayout.LayoutParams(MATCH_PARENT, dp(36)))
+                addView(strip, LinearLayout.LayoutParams(MATCH_PARENT, dp(34)))
                 addView(grid, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
             }
 
@@ -148,11 +163,13 @@ class AbodeInputMethodService : InputMethodService(),
         showStartedAt = SystemClock.uptimeMillis()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
 
+        symbolsMode = false
         setShift(false)
+        applyLayout()
         suggestionEngine.clear()
 
         if (isSensitiveField()) {
-            // TODO(M3): disable the clipboard, AI and voice keys entirely here.
+            // TODO(M2/M3): disable the clipboard, AI and cloud voice keys entirely.
             AbodeLog.i("sensitive field: history, AI and cloud voice are suppressed")
         }
     }
@@ -160,11 +177,14 @@ class AbodeInputMethodService : InputMethodService(),
     override fun onFinishInputView(finishingInput: Boolean) {
         super.onFinishInputView(finishingInput)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
+        stopListening()
     }
 
     override fun onEvaluateFullscreenMode(): Boolean = false
 
     override fun onDestroy() {
+        voiceEngine?.release()
+        voiceEngine = null
         scope.cancel()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         store.clear()
@@ -173,7 +193,19 @@ class AbodeInputMethodService : InputMethodService(),
 
     // ---------------------------------------------------------------- input
 
-    private fun onKeyPressed(key: Key) {
+    /**
+     * Touch-down. Only keys that must act immediately live here: a character
+     * typed on the way down could not be replaced by a long-press alternate.
+     */
+    private fun onKeyDown(key: Key) {
+        when (key.kind) {
+            KeyKind.DELETE -> deleteBackward()
+            else -> Unit
+        }
+    }
+
+    /** Touch-up, or the chosen alternate after a long press. */
+    private fun onKeyUp(key: Key) {
         when (key.kind) {
             KeyKind.CHARACTER -> {
                 commit(key.output)
@@ -187,16 +219,15 @@ class AbodeInputMethodService : InputMethodService(),
             }
 
             KeyKind.ENTER -> handleEnter()
-            KeyKind.DELETE -> deleteBackward()
             KeyKind.SHIFT -> setShift(!shifted)
+            KeyKind.SYMBOLS -> toggleSymbols()
+            KeyKind.GLOBE -> switchInputMethod()
+            KeyKind.VOICE -> toggleListening()
 
-            // TODO(M2/M3/M4): clipboard panel, voice, AI sheet.
-            KeyKind.SYMBOLS, KeyKind.GLOBE, KeyKind.VOICE, KeyKind.CLIPBOARD, KeyKind.AI -> Unit
+            // TODO(M2/M4): clipboard panel and the AI sheet.
+            KeyKind.DELETE, KeyKind.CLIPBOARD, KeyKind.AI -> Unit
         }
     }
-
-    /** Reserved for press-and-hold repeat on delete. */
-    private fun onKeyReleased(key: Key) = Unit
 
     private fun commit(text: String) {
         val ic = currentInputConnection ?: return
@@ -232,10 +263,100 @@ class AbodeInputMethodService : InputMethodService(),
     private fun setShift(value: Boolean) {
         if (shifted == value) return
         shifted = value
-        if (::grid.isInitialized) {
-            grid.keyboardLayout = KeyboardLayout.qwerty(shifted)
+        applyLayout()
+    }
+
+    private fun toggleSymbols() {
+        symbolsMode = !symbolsMode
+        if (!symbolsMode) shifted = false
+        applyLayout()
+    }
+
+    private fun applyLayout() {
+        if (!::grid.isInitialized) return
+        grid.keyboardLayout = if (symbolsMode) {
+            KeyboardLayout.symbols(shifted)
+        } else {
+            KeyboardLayout.qwerty(shifted, numberRow = true)
         }
     }
+
+    private fun switchInputMethod() {
+        val manager = getSystemService(INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
+            ?: return
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            switchToNextInputMethod(false)
+        } else {
+            @Suppress("DEPRECATION")
+            manager.showInputMethodPicker()
+        }
+    }
+
+    // ---------------------------------------------------------------- voice
+
+    private fun toggleListening() {
+        val engine = voiceEngine ?: return
+        if (listening) {
+            stopListening()
+            return
+        }
+        if (isSensitiveField()) {
+            AbodeLog.i("voice suppressed in a sensitive field")
+            return
+        }
+        listening = true
+        engine.start(Locale.getDefault())
+    }
+
+    private fun stopListening() {
+        if (!listening) return
+        listening = false
+        voiceEngine?.stop()
+    }
+
+    private fun onVoiceEvent(event: VoiceEvent) {
+        val ic = currentInputConnection ?: return
+        when (event) {
+            // Partials go into the composing region so the user watches the
+            // words appear and can edit them, rather than waiting for a block.
+            is VoiceEvent.Partial -> ic.setComposingText(event.text, 1)
+
+            is VoiceEvent.Final -> {
+                ic.setComposingText("", 1)
+                if (event.text.isNotEmpty()) ic.commitText(event.text, 1)
+                ic.finishComposingText()
+                listening = false
+            }
+
+            is VoiceEvent.PermissionRequired -> {
+                listening = false
+                requestMicrophonePermission()
+            }
+
+            is VoiceEvent.Failed -> {
+                listening = false
+                AbodeLog.w("voice failed: ${event.code} ${event.message}")
+            }
+
+            VoiceEvent.Ready -> AbodeLog.d("voice ready")
+        }
+    }
+
+    /**
+     * An InputMethodService cannot call requestPermissions(): it has no Activity
+     * to receive the result. The permission lives in :app, and :ime must not
+     * depend on :app, so it is launched by class name.
+     */
+    private fun requestMicrophonePermission() {
+        val intent = Intent().apply {
+            setClassName(packageName, "dev.abode.app.permission.MicrophonePermissionActivity")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        runCatching { startActivity(intent) }
+            .onFailure { AbodeLog.w("could not launch permission activity", it) }
+    }
+
+    // ---------------------------------------------------------------- helpers
 
     private fun currentWordPrefix(): String {
         val ic = currentInputConnection ?: return ""
