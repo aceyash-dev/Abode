@@ -4,6 +4,7 @@ import android.content.Intent
 import android.inputmethodservice.InputMethodService
 import android.os.SystemClock
 import android.text.InputType
+import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.LinearLayout
@@ -28,6 +29,7 @@ import dev.abode.keyboard.KeyGridView
 import dev.abode.keyboard.KeyKind
 import dev.abode.keyboard.KeyboardLayout
 import dev.abode.text.DictionaryLoader
+import dev.abode.text.DevanagariTransliterator
 import dev.abode.text.GlideDecoder
 import dev.abode.text.SuggestionEngine
 import dev.abode.voice.SystemVoiceEngine
@@ -93,6 +95,9 @@ class AbodeInputMethodService : InputMethodService(),
 
     private var shifted = false
     private var symbolsMode = false
+    private var toolbarMode = false
+    private var transliterate = false
+    private val latinBuffer = StringBuilder()
     private var showStartedAt = 0L
 
     override fun onCreate() {
@@ -187,6 +192,9 @@ class AbodeInputMethodService : InputMethodService(),
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
 
         symbolsMode = false
+        toolbarMode = false
+        latinBuffer.setLength(0)
+        transliterate = isDevanagariSubtype()
         setShift(false)
         applyLayout()
         suggestionEngine.clear()
@@ -231,6 +239,14 @@ class AbodeInputMethodService : InputMethodService(),
     private fun onKeyUp(key: Key) {
         when (key.kind) {
             KeyKind.CHARACTER -> {
+                if (transliterate) {
+                    // Buffer the Latin letters and show them as composing text,
+                    // so the user sees what they typed and the whole word is
+                    // available to map at once — matras need the full word.
+                    latinBuffer.append(key.output)
+                    currentInputConnection?.setComposingText(latinBuffer, 1)
+                    return
+                }
                 commit(key.output)
                 if (shifted) setShift(false)
                 trackSentence(key.output)
@@ -244,6 +260,12 @@ class AbodeInputMethodService : InputMethodService(),
             KeyKind.SYMBOLS -> toggleSymbols()
             KeyKind.GLOBE -> switchInputMethod()
             KeyKind.VOICE -> toggleListening()
+            KeyKind.EDIT -> toggleToolbar()
+            KeyKind.SELECT_ALL -> contextAction(android.R.id.selectAll)
+            KeyKind.CUT -> contextAction(android.R.id.cut)
+            KeyKind.COPY -> contextAction(android.R.id.copy)
+            KeyKind.PASTE -> contextAction(android.R.id.paste)
+            KeyKind.UNDO -> sendUndo()
 
             // TODO(M2/M4): clipboard panel and the AI sheet.
             KeyKind.DELETE, KeyKind.CLIPBOARD, KeyKind.AI -> Unit
@@ -256,6 +278,7 @@ class AbodeInputMethodService : InputMethodService(),
      * have and the cheapest punctuation shortcut there is.
      */
     private fun handleSpace() {
+        finishTransliteration()
         if (lastCommitWasSpace) {
             val ic = currentInputConnection ?: return
             ic.beginBatchEdit()
@@ -342,6 +365,7 @@ class AbodeInputMethodService : InputMethodService(),
     }
 
     private fun handleEnter() {
+        finishTransliteration()
         val ic = currentInputConnection ?: return
         val info = currentInputEditorInfo
         if (info != null && (info.imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION) == 0) {
@@ -379,11 +403,65 @@ class AbodeInputMethodService : InputMethodService(),
 
     private fun applyLayout() {
         if (!::grid.isInitialized) return
-        grid.keyboardLayout = if (symbolsMode) {
-            KeyboardLayout.symbols(shifted)
-        } else {
-            KeyboardLayout.qwerty(shifted, numberRow = true)
+        grid.keyboardLayout = when {
+            toolbarMode -> KeyboardLayout.editing()
+            symbolsMode -> KeyboardLayout.symbols(shifted)
+            else -> KeyboardLayout.qwerty(shifted, numberRow = true)
         }
+    }
+
+    private fun toggleToolbar() {
+        toolbarMode = !toolbarMode
+        if (toolbarMode) {
+            symbolsMode = false
+            shifted = false
+        }
+        applyLayout()
+    }
+
+    /**
+     * Selection and clipboard go through the field's own context menu rather
+     * than through setSelection and a private clipboard buffer: the app decides
+     * what "select all" means in a rich text field, and copying through the
+     * system clipboard is the only way the paste lands in the right place.
+     */
+    /**
+     * Which script the active subtype asks for. The Latin keyboard stays as it
+     * is — the point of transliteration is that you never learn a second layout.
+     */
+    private fun isDevanagariSubtype(): Boolean {
+        val manager = getSystemService(INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
+            ?: return false
+        val tag = runCatching { manager.currentInputMethodSubtype?.languageTag }.getOrNull() ?: return false
+        return tag.startsWith("hi") || tag.startsWith("mr")
+    }
+
+    /** Replaces the Latin being composed with its Devanagari reading. */
+    private fun finishTransliteration() {
+        if (latinBuffer.isEmpty()) return
+        val ic = currentInputConnection ?: return
+        val devanagari = DevanagariTransliterator.transliterate(latinBuffer.toString())
+        ic.beginBatchEdit()
+        ic.setComposingText("", 1)
+        ic.commitText(devanagari, 1)
+        ic.endBatchEdit()
+        latinBuffer.setLength(0)
+    }
+
+    private fun contextAction(action: Int) {
+        val ic = currentInputConnection ?: return
+        ic.performContextMenuAction(action)
+    }
+
+    /** Undo has no InputConnection API; the convention every editor understands is Ctrl+Z. */
+    private fun sendUndo() {
+        val ic = currentInputConnection ?: return
+        ic.sendKeyEvent(
+            KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_Z, 0, KeyEvent.META_CTRL_ON),
+        )
+        ic.sendKeyEvent(
+            KeyEvent(0, 0, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_Z, 0, KeyEvent.META_CTRL_ON),
+        )
     }
 
     private fun switchInputMethod() {

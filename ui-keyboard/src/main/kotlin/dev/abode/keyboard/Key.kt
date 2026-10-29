@@ -11,6 +11,16 @@ enum class KeyKind {
     VOICE,
     CLIPBOARD,
     AI,
+    EDIT,
+
+    // The editing toolbar. These act on the field through InputConnection's
+    // context-menu actions rather than reimplementing selection and clipboard
+    // handling, so they behave like the app's own menu does.
+    SELECT_ALL,
+    CUT,
+    COPY,
+    PASTE,
+    UNDO,
 }
 
 /**

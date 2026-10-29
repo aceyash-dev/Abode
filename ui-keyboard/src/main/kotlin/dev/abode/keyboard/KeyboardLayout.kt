@@ -82,13 +82,36 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
             rows += listOf(
                 Key("123", KeyKind.SYMBOLS, widthWeight = 1.4f),
                 Key("🌐", KeyKind.GLOBE, widthWeight = 1.1f),
-                Key("space", KeyKind.SPACE, output = " ", widthWeight = 4.2f),
+                Key("space", KeyKind.SPACE, output = " ", widthWeight = 3.8f),
+                Key("✎", KeyKind.EDIT, widthWeight = 1.0f),
                 Key("🎤", KeyKind.VOICE, widthWeight = 1.2f),
                 Key("return", KeyKind.ENTER, widthWeight = 1.9f),
             )
 
             return KeyboardLayout(rows)
         }
+
+        /**
+         * The editing toolbar: the actions the system's own selection menu
+         * offers, on the keyboard where the cursor already is.
+         */
+        fun editing(): KeyboardLayout = KeyboardLayout(
+            listOf(
+                listOf(
+                    Key("Select all", KeyKind.SELECT_ALL, widthWeight = 2.4f),
+                    Key("Cut", KeyKind.CUT, widthWeight = 1.6f),
+                    Key("Copy", KeyKind.COPY, widthWeight = 1.6f),
+                    Key("Paste", KeyKind.PASTE, widthWeight = 1.6f),
+                    Key("Undo", KeyKind.UNDO, widthWeight = 1.6f),
+                ),
+                listOf(
+                    Key("Done", KeyKind.EDIT, widthWeight = 2.4f),
+                    Key("space", KeyKind.SPACE, output = " ", widthWeight = 3.2f),
+                    Key("⌫", KeyKind.DELETE, widthWeight = 1.6f),
+                    Key("return", KeyKind.ENTER, widthWeight = 1.9f),
+                ),
+            ),
+        )
 
         /** The 123 page. */
         fun symbols(shifted: Boolean = false): KeyboardLayout {

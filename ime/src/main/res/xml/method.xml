@@ -3,9 +3,24 @@
     android:settingsActivity="dev.abode.app.MainActivity"
     android:supportsSwitchingToNextInputMethod="true">
 
+    <!--
+        One subtype per script. The Latin keyboard is the same in all three: the
+        Devanagari subtypes transliterate as you type rather than showing a
+        second layout, which is what people here already expect from a keyboard.
+    -->
     <subtype
         android:imeSubtypeLocale="en_US"
         android:imeSubtypeMode="keyboard"
         android:label="@string/subtype_en" />
+
+    <subtype
+        android:imeSubtypeLocale="hi_IN"
+        android:imeSubtypeMode="keyboard"
+        android:label="@string/subtype_hi" />
+
+    <subtype
+        android:imeSubtypeLocale="mr_IN"
+        android:imeSubtypeMode="keyboard"
+        android:label="@string/subtype_mr" />
 
 </input-method>
