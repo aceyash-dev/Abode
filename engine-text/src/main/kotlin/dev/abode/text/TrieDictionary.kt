@@ -63,9 +63,25 @@ class TrieDictionary {
             node = node.children[c] ?: return emptyList()
         }
 
-        val results = ArrayList<Pair<String, Int>>(limit * 4)
-        collect(node, StringBuilder(prefix), results, limit * 8)
-        results.sortByDescending { it.second }
+        // Collect a wide sample, then rank it.
+        //
+        // The cap used to be `limit * 8` — twenty-four candidates for three
+        // slots — and the walk is depth-first in insertion order, so the sample
+        // was whatever happened to sit first in the trie. Sorting twenty-four
+        // near-arbitrary words by frequency is how a strip ends up offering the
+        // right word first and two unrelated ones after it: the ranking was
+        // fine, the candidates were not.
+        val results = ArrayList<Pair<String, Int>>(limit * 32)
+        collect(node, StringBuilder(prefix), results, limit * 64)
+
+        // Frequency first, then the shortest word that finishes it. A completion
+        // that adds one letter is what somebody typing a prefix usually means;
+        // a much longer word with the same count is usually not.
+        results.sortWith(
+            compareByDescending<Pair<String, Int>> { it.second }
+                .thenBy { it.first.length }
+                .thenBy { it.first },
+        )
         return results.take(limit).map { it.first }
     }
 

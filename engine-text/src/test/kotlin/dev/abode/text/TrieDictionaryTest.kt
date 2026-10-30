@@ -30,6 +30,25 @@ class TrieDictionaryTest {
     }
 
     @Test
+    fun `a wide sample is ranked, not a narrow one`() {
+        // The candidate cap used to be twenty-four, taken in trie order, so a
+        // prefix with many completions was ranked on whatever the walk happened
+        // to reach first. A frequent word late in the trie must still win.
+        val words = (1..80).map { "th${'a' + (it % 20)}$it 10" } +
+            listOf("the 9000")
+        val dict = TrieDictionary.parse(words.asSequence())
+        assertEquals("the", dict.suggestions("th", 1).first())
+    }
+
+    @Test
+    fun `a shorter completion wins a tie on frequency`() {
+        val dict = TrieDictionary.parse(
+            sequenceOf("thank 100", "thanksgiving 100"),
+        )
+        assertEquals(listOf("thank", "thanksgiving"), dict.suggestions("tha", 2))
+    }
+
+    @Test
     fun `respects the limit`() {
         assertEquals(2, dictionary().suggestions("th", 2).size)
     }
