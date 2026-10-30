@@ -19,8 +19,9 @@ import compose.icons.TablerIcons
 import compose.icons.tablericons.Backspace
 import compose.icons.tablericons.Clipboard
 import compose.icons.tablericons.CornerDownLeft
+import compose.icons.tablericons.Language
 import compose.icons.tablericons.Microphone
-import compose.icons.tablericons.World
+import compose.icons.tablericons.MoodSmile
 import dev.abode.core.common.theme.KeyShape
 import dev.abode.core.common.theme.KeyboardTheme
 import java.io.File
@@ -286,12 +287,14 @@ class KeyGridView @JvmOverloads constructor(
     }
 
     /** Tabler glyphs for the keys that are actions rather than letters. */
-    private fun iconFor(kind: KeyKind): ImageVector? = when (kind) {
+    private fun iconFor(key: Key): ImageVector? = when (key.kind) {
         KeyKind.DELETE -> TablerIcons.Backspace
         KeyKind.ENTER -> TablerIcons.CornerDownLeft
-        KeyKind.GLOBE -> TablerIcons.World
+        KeyKind.GLOBE -> TablerIcons.Language
         KeyKind.VOICE -> TablerIcons.Microphone
         KeyKind.CLIPBOARD -> TablerIcons.Clipboard
+        // The "ABC" that returns from emoji stays a word: it names the page it goes to.
+        KeyKind.EMOJI -> if (key.label == "ABC") null else TablerIcons.MoodSmile
         else -> null
     }
 
@@ -299,6 +302,7 @@ class KeyGridView @JvmOverloads constructor(
     private fun fillFor(index: Int, key: Key): Paint? = when {
         index == pressedIndex -> pressedPaint
         key.kind == KeyKind.GLOBE || key.kind == KeyKind.VOICE -> null
+        key.kind == KeyKind.EMOJI && iconFor(key) != null -> null
         key.kind == KeyKind.ENTER -> activePaint
         key.kind == KeyKind.SHIFT && key.active -> shiftOnPaint
         key.active -> activePaint
@@ -363,7 +367,7 @@ class KeyGridView @JvmOverloads constructor(
             // Return is drawn as its arrow, unless the field asked for a named action
             // (send, go, search): then the word is the thing the person needs to see.
             val namedEnter = keys[i].kind == KeyKind.ENTER && keys[i].label != "return"
-            val icon = if (namedEnter) null else iconFor(keys[i].kind)
+            val icon = if (namedEnter) null else iconFor(keys[i])
             if (icon != null) {
                 drawIcon(canvas, r, icon, keys[i].kind)
                 continue

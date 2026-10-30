@@ -143,8 +143,8 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
         const val EMOJI_PER_PAGE = EMOJI_PER_ROW * EMOJI_ROWS
 
         /** How many pages a category needs. Always at least one. */
-        fun emojiPageCount(category: Int): Int {
-            val items = EmojiCatalog.categories.getOrNull(category)?.emoji.orEmpty().size
+        fun emojiPageCount(category: Int, renders: (String) -> Boolean = { true }): Int {
+            val items = EmojiCatalog.categories.getOrNull(category)?.emoji.orEmpty().count(renders)
             return ((items + EMOJI_PER_PAGE - 1) / EMOJI_PER_PAGE).coerceAtLeast(1)
         }
 
@@ -153,11 +153,13 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
          * bottom row to get back to letters. Category and page come from the
          * keyboard's state, so this stays a pure function of its arguments.
          */
-        fun emoji(category: Int, page: Int): KeyboardLayout {
+        fun emoji(category: Int, page: Int, renders: (String) -> Boolean = { true }): KeyboardLayout {
             val catalog = EmojiCatalog.categories
             val current = category.coerceIn(0, catalog.lastIndex)
-            val items = catalog[current].emoji
-            val pageIndex = page.coerceIn(0, emojiPageCount(current) - 1)
+            // Only emoji the device font can draw. Anything else would show as a
+            // replacement box, which is the "stupid render" people were seeing.
+            val items = catalog[current].emoji.filter(renders)
+            val pageIndex = page.coerceIn(0, emojiPageCount(current, renders) - 1)
             val visible = items.drop(pageIndex * EMOJI_PER_PAGE).take(EMOJI_PER_PAGE)
 
             val rows = mutableListOf<List<Key>>()
@@ -277,7 +279,7 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
                 listOf(
                     digits("1234567890"),
                     listOf("-", "/", ":", ";", "(", ")", "₹", "&", "@", "\"").map { Key(it) },
-                    listOf("%", "*", "~", "|", "\\", "<", ">", "©", "®", "°").map { Key(it) },
+                    listOf("%", "*", "|", "\\", "<", ">", "[", "]", "{", "}").map { Key(it) },
                     listOf(
                         shiftKey(shifted, capsLock = false),
                     ) + listOf("#", "+", "=", ".", ",", "?", "!").map { Key(it) } + listOf(

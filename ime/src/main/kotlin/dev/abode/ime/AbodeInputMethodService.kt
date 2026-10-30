@@ -375,6 +375,23 @@ class AbodeInputMethodService : InputMethodService(),
     private fun autocorrectLastWord() {
         val ic = currentInputConnection ?: return
         val before = ic.getTextBeforeCursor(40, 0)?.toString() ?: return
+
+        // A single comma pressed inside a word ("hel,lo") is a slip, not a
+        // separator. If the word is real once it is removed, take it out.
+        val raw = before.takeLastWhile { it.isLetter() || it == '\'' || it == ',' }
+        if (raw.count { it == ',' } == 1 && raw.indexOf(',') in 1 until raw.length - 1) {
+            val fixed = raw.replace(",", "")
+            if (dictionary?.contains(fixed.lowercase()) == true) {
+                ic.beginBatchEdit()
+                ic.deleteSurroundingText(raw.length, 0)
+                ic.commitText(fixed, 1)
+                ic.endBatchEdit()
+                lastCorrection = raw to fixed
+                setStatus("Undo “$raw”")
+                return
+            }
+        }
+
         val word = before.takeLastWhile { it.isLetter() || it == '\'' }
         if (word.length < 3) return
 
@@ -554,7 +571,7 @@ class AbodeInputMethodService : InputMethodService(),
             toolbarMode -> KeyboardLayout.editing()
             numericMode -> KeyboardLayout.numeric()
             symbolsMode -> KeyboardLayout.symbols(shifted)
-            emojiMode -> KeyboardLayout.emoji(emojiCategory, emojiPage)
+            emojiMode -> KeyboardLayout.emoji(emojiCategory, emojiPage, ::emojiRenders)
             else -> KeyboardLayout.qwerty(
                 shifted = shifted,
                 capsLock = capsLock,
@@ -562,6 +579,16 @@ class AbodeInputMethodService : InputMethodService(),
             )
         }
     }
+
+    private val glyphPaint = android.graphics.Paint()
+    private val glyphCache = HashMap<String, Boolean>()
+
+    /**
+     * Whether the system font can draw [emoji] as one glyph. Checked once per
+     * string: a sequence the font lacks falls back to boxes, so it is hidden.
+     */
+    private fun emojiRenders(emoji: String): Boolean =
+        glyphCache.getOrPut(emoji) { glyphPaint.hasGlyph(emoji) }
 
     /**
      * The return key says what pressing it will do. A field that wants a search
@@ -644,7 +671,7 @@ class AbodeInputMethodService : InputMethodService(),
     }
 
     private fun nextEmojiPage() {
-        val pages = KeyboardLayout.emojiPageCount(emojiCategory)
+        val pages = KeyboardLayout.emojiPageCount(emojiCategory, ::emojiRenders)
         emojiPage = (emojiPage + 1) % pages
         applyLayout()
     }
