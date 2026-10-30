@@ -11,6 +11,7 @@ import android.os.Looper
 import android.util.AttributeSet
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
+import android.view.SoundEffectConstants
 import android.view.View
 import android.view.ViewConfiguration
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -153,6 +154,7 @@ class KeyGridView @JvmOverloads constructor(
 
     private val keyPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val pressedPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val activePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val popupPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val popupSelectedPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val trailPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -179,6 +181,7 @@ class KeyGridView @JvmOverloads constructor(
     fun applyTheme() {
         keyPaint.color = theme.keyBackground
         pressedPaint.color = theme.keyPressed
+        activePaint.color = theme.accent
         popupPaint.color = theme.popupBackground
         popupSelectedPaint.color = theme.keyPressed
         labelPaint.color = theme.keyLabel
@@ -297,7 +300,12 @@ class KeyGridView @JvmOverloads constructor(
         for (i in 0 until count) {
             if (keys[i].kind == KeyKind.SPACER) continue
             val r = rects[i]
-            canvas.drawPath(keyPaths[i], if (i == pressedIndex) pressedPaint else keyPaint)
+            val fill = when {
+                i == pressedIndex -> pressedPaint
+                keys[i].active -> activePaint
+                else -> keyPaint
+            }
+            canvas.drawPath(keyPaths[i], fill)
 
             val icon = iconFor(keys[i].kind)
             if (icon != null) {
@@ -494,7 +502,7 @@ class KeyGridView @JvmOverloads constructor(
         popupRects.clear()
         if (popupKeys.isEmpty()) return
 
-        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        if (theme.haptics) performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
 
         val cellWidth = anchor.width()
         val totalWidth = cellWidth * popupKeys.size
@@ -553,6 +561,7 @@ class KeyGridView @JvmOverloads constructor(
         if (index >= 0) {
             invalidateKey(index)
             if (theme.haptics) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            if (theme.keySound) playSoundEffect(SoundEffectConstants.CLICK)
             listener?.onKeyDown(keys[index])
         }
     }

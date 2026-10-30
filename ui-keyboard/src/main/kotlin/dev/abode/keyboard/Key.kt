@@ -44,6 +44,8 @@ data class Key(
     val output: String = label,
     val widthWeight: Float = 1f,
     val alternates: List<String> = emptyList(),
+    /** A toggle that is currently on (shift, caps lock). Drawn in the accent colour. */
+    val active: Boolean = false,
 ) {
     val hasAlternates: Boolean get() = alternates.isNotEmpty()
 

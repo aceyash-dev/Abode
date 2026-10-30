@@ -1,6 +1,7 @@
 package dev.abode.app.theme
 
 import android.graphics.Typeface
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -14,10 +15,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AssistChip
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -69,6 +73,10 @@ fun ThemeEditorScreen(onBack: () -> Unit) {
     val theme = draft ?: stored
 
     var pickingRole by remember { mutableStateOf<String?>(null) }
+    var fontError by remember { mutableStateOf<String?>(null) }
+
+    // The system back gesture should leave this screen, not close the app.
+    BackHandler(onBack = onBack)
 
     fun update(next: KeyboardTheme) {
         draft = next
@@ -80,19 +88,21 @@ fun ThemeEditorScreen(onBack: () -> Unit) {
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         val target = File(context.filesDir, "keyboard_font_${System.currentTimeMillis()}.ttf")
-        runCatching {
+        val copied = runCatching {
             context.contentResolver.openInputStream(uri)?.use { input ->
                 target.outputStream().use { output -> input.copyTo(output) }
             }
-        }.onSuccess {
-            // Validate before saving: a file that is not a font must not be able
-            // to take the keyboard down on the next keystroke.
-            val usable = runCatching { Typeface.createFromFile(target) }.isSuccess
-            if (usable) {
-                update(theme.copy(fontPath = target.absolutePath))
-            } else {
-                target.delete()
-            }
+        }.isSuccess
+        // Validate before saving: a file that is not a font must not be able to
+        // take the keyboard down on the next keystroke. Say why it was refused,
+        // because a silent no-op looks like a broken button.
+        val usable = copied && runCatching { Typeface.createFromFile(target) }.isSuccess
+        if (usable) {
+            fontError = null
+            update(theme.copy(fontPath = target.absolutePath))
+        } else {
+            target.delete()
+            fontError = "That file isn't a usable font. Try a .ttf or .otf file."
         }
     }
 
@@ -121,10 +131,16 @@ fun ThemeEditorScreen(onBack: () -> Unit) {
 
         ThemePreview(theme)
 
+        // Chips show which choice is live. An unmarked chip reads as "not chosen"
+        // to nobody, and people keep tapping a preset to see whether it changed.
         Text("Presets", style = MaterialTheme.typography.titleSmall)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             ThemePresets.all.forEach { preset ->
-                AssistChip(
+                FilterChip(
+                    selected = preset.id == theme.id,
                     onClick = { update(preset) },
                     label = { Text(preset.name) },
                 )
@@ -134,7 +150,8 @@ fun ThemeEditorScreen(onBack: () -> Unit) {
         Text("Key shape", style = MaterialTheme.typography.titleSmall)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             KeyShape.entries.forEach { shape ->
-                AssistChip(
+                FilterChip(
+                    selected = theme.keyShape == shape,
                     onClick = { update(theme.copy(keyShape = shape)) },
                     label = { Text(if (shape == KeyShape.HEXAGON) "Hexagon" else "Rounded") },
                 )
@@ -189,6 +206,9 @@ fun ThemeEditorScreen(onBack: () -> Unit) {
             text = theme.fontPath?.let { File(it).name } ?: "System font",
             style = MaterialTheme.typography.bodySmall,
         )
+        fontError?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { fontPicker.launch(arrayOf("*/*")) }) {
                 Text("Choose font file")
@@ -277,6 +297,10 @@ private fun ThemePreview(theme: KeyboardTheme) {
         if (usable && file != null) FontFamily(Font(file)) else FontFamily.Default
     }
 
+    val keyShape = remember(theme.keyShape, theme.cornerRadiusDp) {
+        if (theme.keyShape == KeyShape.HEXAGON) hexagonShape() else RoundedCornerShape(theme.cornerRadiusDp.dp)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -292,7 +316,7 @@ private fun ThemePreview(theme: KeyboardTheme) {
                         modifier = Modifier
                             .weight(1f)
                             .height((theme.rowHeightDp * 0.62f).dp)
-                            .clip(RoundedCornerShape(theme.cornerRadiusDp.dp))
+                            .clip(keyShape)
                             .background(Color(theme.keyBackground)),
                         contentAlignment = Alignment.Center,
                     ) {
@@ -312,7 +336,7 @@ private fun ThemePreview(theme: KeyboardTheme) {
                     modifier = Modifier
                         .weight(weight)
                         .height((theme.rowHeightDp * 0.62f).dp)
-                        .clip(RoundedCornerShape(theme.cornerRadiusDp.dp))
+                        .clip(keyShape)
                         .background(Color(theme.keyPressed)),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -326,4 +350,20 @@ private fun ThemePreview(theme: KeyboardTheme) {
             }
         }
     }
+}
+
+/**
+ * The same flat-top hexagon KeyGridView draws, so the preview and the keyboard
+ * agree about what a key looks like.
+ */
+private fun hexagonShape(): Shape = GenericShape { size, _ ->
+    val w = size.width
+    val h = size.height
+    moveTo(w * 0.17f, h / 2f)
+    lineTo(w * 0.33f, 0f)
+    lineTo(w * 0.67f, 0f)
+    lineTo(w * 0.83f, h / 2f)
+    lineTo(w * 0.67f, h)
+    lineTo(w * 0.33f, h)
+    close()
 }

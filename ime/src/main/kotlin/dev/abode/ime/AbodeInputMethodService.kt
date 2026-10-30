@@ -475,6 +475,10 @@ class AbodeInputMethodService : InputMethodService(),
             capsLock = false
             setShift(!shifted)
         }
+        // setShift returns early when the value has not changed, and a caps-lock
+        // double tap changes only the lock. Redraw explicitly so the key's label
+        // and state always match what the next letter will be.
+        applyLayout()
         lastShiftTap = now
     }
 
@@ -541,7 +545,30 @@ class AbodeInputMethodService : InputMethodService(),
             toolbarMode -> KeyboardLayout.editing()
             numericMode -> KeyboardLayout.numeric()
             symbolsMode -> KeyboardLayout.symbols(shifted)
-            else -> KeyboardLayout.qwerty(shifted, numberRow = true)
+            else -> KeyboardLayout.qwerty(
+                shifted = shifted,
+                numberRow = true,
+                capsLock = capsLock,
+                enterLabel = enterLabel(),
+            )
+        }
+    }
+
+    /**
+     * The return key says what pressing it will do. A field that wants a search
+     * or a send shows "search" or "send", the same cue the system keyboard gives,
+     * so the key never promises a newline it will not type.
+     */
+    private fun enterLabel(): String {
+        val info = currentInputEditorInfo ?: return "return"
+        if ((info.imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION) != 0) return "return"
+        return when (info.imeOptions and EditorInfo.IME_MASK_ACTION) {
+            EditorInfo.IME_ACTION_SEND -> "send"
+            EditorInfo.IME_ACTION_GO -> "go"
+            EditorInfo.IME_ACTION_SEARCH -> "search"
+            EditorInfo.IME_ACTION_DONE -> "done"
+            EditorInfo.IME_ACTION_NEXT -> "next"
+            else -> "return"
         }
     }
 

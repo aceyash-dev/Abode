@@ -12,6 +12,18 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
                 Key(label = label, output = label, alternates = alternates[c].orEmpty())
             }
 
+        /**
+         * Shift shows its state on the key itself: lit when a capital is queued,
+         * and a filled arrow when caps lock is on, so the person never has to
+         * guess why the next letter came out the wrong case.
+         */
+        private fun shiftKey(shifted: Boolean, capsLock: Boolean): Key = Key(
+            label = if (capsLock) "⇪" else "⇧",
+            kind = KeyKind.SHIFT,
+            widthWeight = 1.5f,
+            active = shifted,
+        )
+
         private val LETTER_ALTERNATES = mapOf(
             'q' to listOf("1", "~"),
             'w' to listOf("2", "€"),
@@ -62,6 +74,8 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
             shifted: Boolean = false,
             numberRow: Boolean = true,
             bottomStrip: Boolean = true,
+            capsLock: Boolean = false,
+            enterLabel: String = "return",
         ): KeyboardLayout {
             val rows = mutableListOf<List<Key>>()
 
@@ -78,7 +92,7 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
             rows += letters("qwertyuiop", shifted, LETTER_ALTERNATES)
             rows += letters("asdfghjkl", shifted, LETTER_ALTERNATES)
             rows += listOf(
-                Key("⇧", KeyKind.SHIFT, widthWeight = 1.5f),
+                shiftKey(shifted, capsLock),
             ) + letters("zxcvbnm", shifted, LETTER_ALTERNATES) + listOf(
                 Key("⌫", KeyKind.DELETE, widthWeight = 1.5f),
             )
@@ -87,7 +101,7 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
                 Key("123", KeyKind.SYMBOLS, widthWeight = 1.4f),
                 Key("✎", KeyKind.EDIT, widthWeight = 1.2f),
                 Key("space", KeyKind.SPACE, output = " ", widthWeight = 4.6f),
-                Key("return", KeyKind.ENTER, widthWeight = 1.9f),
+                Key(enterLabel, KeyKind.ENTER, widthWeight = 1.9f),
             )
 
             // The strip under the keys, as iOS has it: the two keys that are not
@@ -198,7 +212,7 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
                     listOf("-", "/", ":", ";", "(", ")", "₹", "&", "@", "\"").map { Key(it) },
                     listOf("%", "*", "~", "|", "\\", "<", ">", "©", "®", "°").map { Key(it) },
                     listOf(
-                        Key("⇧", KeyKind.SHIFT, widthWeight = 1.5f),
+                        shiftKey(shifted, capsLock = false),
                     ) + listOf("#", "+", "=", ".", ",", "?", "!").map { Key(it) } + listOf(
                         Key("⌫", KeyKind.DELETE, widthWeight = 1.5f),
                     ),

@@ -17,13 +17,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,6 +37,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import dev.abode.app.theme.ThemeEditorScreen
 import dev.abode.core.ui.AbodeTheme
 import dev.abode.voice.CapabilityProbe
@@ -53,7 +59,7 @@ class MainActivity : ComponentActivity() {
                     if (showAppearance) {
                         ThemeEditorScreen(onBack = { showAppearance = false })
                     } else {
-                        StatusScreen(onCustomise = { showAppearance = true })
+                        SetupScreen(onCustomise = { showAppearance = true })
                     }
                 }
             }
@@ -61,15 +67,32 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/**
+ * The setup flow, in the order a person has to do it: turn Abode on, make it the
+ * keyboard, then try it. Each step says what it is for and what is still missing,
+ * and the steps re-check themselves when the person comes back from system
+ * settings, so the screen never claims something the system has since undone.
+ */
 @Composable
-private fun StatusScreen(onCustomise: () -> Unit) {
+private fun SetupScreen(onCustomise: () -> Unit) {
     val context = LocalContext.current
-    val enabled = remember { isAbodeEnabled(context) }
-    val capabilities = remember { CapabilityProbe.probe(context) }
+
+    var enabled by remember { mutableStateOf(isAbodeEnabled(context)) }
+    var selected by remember { mutableStateOf(isAbodeSelected(context)) }
+    var showDetails by remember { mutableStateOf(false) }
+    var tryText by remember { mutableStateOf("") }
+
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        enabled = isAbodeEnabled(context)
+        selected = isAbodeSelected(context)
+    }
+
+    val allDone = enabled && selected
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -81,17 +104,15 @@ private fun StatusScreen(onCustomise: () -> Unit) {
                 tint = MaterialTheme.colorScheme.primary,
             )
             Spacer(Modifier.width(12.dp))
-            Column {
-                Text(text = "Abode", style = MaterialTheme.typography.displaySmall)
-                Text(
-                    text = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
+            Text(text = "Abode", style = MaterialTheme.typography.displaySmall)
         }
 
         Text(
-            text = "Keyboard with AI snippets, clipboard history and tiered voice input.",
+            text = if (allDone) {
+                "You're set up. Try typing below, or change how it looks."
+            } else {
+                "Three steps and you're typing with Abode."
+            },
             style = MaterialTheme.typography.bodyMedium,
         )
 
@@ -100,54 +121,136 @@ private fun StatusScreen(onCustomise: () -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Text("Status", style = MaterialTheme.typography.titleMedium)
-                Text(if (enabled) "Keyboard is enabled in system settings." else "Keyboard is not enabled yet.")
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = TablerIcons.Microphone,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text("Voice tier: ${capabilities.recommended.name}")
+                SetupStep(
+                    number = "1",
+                    title = "Turn on Abode",
+                    detail = "Android needs your permission before any keyboard can be used.",
+                    done = enabled,
+                ) {
+                    Button(onClick = { openInputMethodSettings(context) }) {
+                        Text("Open settings")
+                    }
                 }
-                Text(capabilities.reason, style = MaterialTheme.typography.bodySmall)
-                Text(
-                    "Device: ${capabilities.totalRamGb.round1()} GB RAM, " +
-                        "${capabilities.cores} cores, ${capabilities.freeDiskMb} MB free",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-        }
 
-        Button(
-            onClick = {
-                context.startActivity(
-                    Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                )
-            },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Icon(TablerIcons.Keyboard, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Open keyboard settings")
+                SetupStep(
+                    number = "2",
+                    title = "Make Abode your keyboard",
+                    detail = if (enabled) {
+                        "Choose Abode from the list that appears."
+                    } else {
+                        "Available once step 1 is done."
+                    },
+                    done = selected,
+                ) {
+                    Button(
+                        onClick = { showKeyboardPicker(context) },
+                        enabled = enabled,
+                    ) {
+                        Text("Choose keyboard")
+                    }
+                }
+
+                SetupStep(
+                    number = "3",
+                    title = "Try it",
+                    detail = "Type below to check it works in a real text field.",
+                    done = false,
+                ) {
+                    OutlinedTextField(
+                        value = tryText,
+                        onValueChange = { tryText = it },
+                        placeholder = { Text("Tap here to type") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
         }
 
         OutlinedButton(onClick = onCustomise, modifier = Modifier.fillMaxWidth()) {
             Icon(TablerIcons.Palette, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text("Appearance — colours, font, shape")
+            Text("Appearance: colours, font and shape")
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "Clipboard history and the AI sheet land in M2 to M4. See README for the roadmap.",
-            style = MaterialTheme.typography.bodySmall,
-        )
+        // Device and voice facts are for troubleshooting, not for the first screen.
+        TextButton(onClick = { showDetails = !showDetails }) {
+            Text(if (showDetails) "Hide details" else "Voice and device details")
+        }
+        if (showDetails) {
+            VoiceDetails(context)
+        }
     }
+}
+
+@Composable
+private fun SetupStep(
+    number: String,
+    title: String,
+    detail: String,
+    done: Boolean,
+    action: @Composable () -> Unit,
+) {
+    Row(verticalAlignment = Alignment.Top) {
+        Text(
+            text = if (done) "✓" else number,
+            style = MaterialTheme.typography.titleMedium,
+            color = if (done) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = if (done) "$title (done)" else title,
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Text(detail, style = MaterialTheme.typography.bodySmall)
+            if (!done) {
+                Spacer(Modifier.height(8.dp))
+                action()
+            }
+        }
+    }
+}
+
+@Composable
+private fun VoiceDetails(context: Context) {
+    val capabilities = remember { CapabilityProbe.probe(context) }
+    Card {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = TablerIcons.Microphone,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text("Voice: ${capabilities.recommended.name}", style = MaterialTheme.typography.bodyMedium)
+            }
+            Text(capabilities.reason, style = MaterialTheme.typography.bodySmall)
+            Text(
+                "Device: ${capabilities.totalRamGb.round1()} GB RAM, " +
+                    "${capabilities.cores} cores, ${capabilities.freeDiskMb} MB free",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+private fun openInputMethodSettings(context: Context) {
+    context.startActivity(
+        Intent(Settings.ACTION_INPUT_METHOD_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+    )
+}
+
+private fun showKeyboardPicker(context: Context) {
+    val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager ?: return
+    imm.showInputMethodPicker()
 }
 
 private fun Float.round1(): String {
@@ -156,6 +259,18 @@ private fun Float.round1(): String {
 }
 
 private fun isAbodeEnabled(context: Context): Boolean {
-    val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+    val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager ?: return false
     return imm.enabledInputMethodList.any { it.packageName == context.packageName }
+}
+
+/**
+ * The system stores the active keyboard as "package/service". Reading it is
+ * allowed to any app, and it is the only reliable way to know whether Abode is
+ * the one in use rather than merely installed.
+ */
+private fun isAbodeSelected(context: Context): Boolean {
+    val active = runCatching {
+        Settings.Secure.getString(context.contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)
+    }.getOrNull().orEmpty()
+    return active.startsWith(context.packageName + "/")
 }
