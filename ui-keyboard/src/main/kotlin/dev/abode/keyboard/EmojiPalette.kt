@@ -11,7 +11,9 @@ object EmojiPalette {
     val tabs: List<EmojiCategory>
         get() = listOf(EmojiCategory("Recent", "🕘", recents)) +
             EmojiCatalog.categories +
-            EmojiCategory("Kaomoji", "ツ", KAOMOJI)
+            EmojiCategory(KAOMOJI_NAME, "ツ", KAOMOJI)
+
+    const val KAOMOJI_NAME = "Kaomoji"
 
     val KAOMOJI: List<String> = listOf(
         "(^_^)", "(^o^)", "(-_-)", "(;_;)", "(T_T)", "(>_<)", "(¬_¬)", "(ಠ_ಠ)",

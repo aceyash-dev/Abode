@@ -31,7 +31,7 @@ data class KeyboardTheme(
      * "mono". A file path wins over this, because importing a font is a more
      * specific choice than picking one of three.
      */
-    val fontFamily: String = FONT_SANS,
+    val fontFamily: String = FONT_SERIF,
     val cornerRadiusDp: Float = 12f,
     val keyGapDp: Float = 6f,
     val rowHeightDp: Float = 52f,

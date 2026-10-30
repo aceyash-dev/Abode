@@ -18,7 +18,6 @@ import compose.icons.TablerIcons
 import compose.icons.tablericons.Backspace
 import compose.icons.tablericons.Clipboard
 import compose.icons.tablericons.CornerDownLeft
-import compose.icons.tablericons.World
 import compose.icons.tablericons.Microphone
 import dev.abode.core.common.theme.KeyShape
 import dev.abode.core.common.theme.KeyboardTheme
@@ -342,7 +341,7 @@ class KeyGridView @JvmOverloads constructor(
     private fun iconFor(key: Key): ImageVector? = when (key.kind) {
         KeyKind.DELETE -> TablerIcons.Backspace
         KeyKind.ENTER -> TablerIcons.CornerDownLeft
-        KeyKind.GLOBE -> TablerIcons.World
+        KeyKind.GLOBE -> null
         KeyKind.VOICE -> TablerIcons.Microphone
         KeyKind.CLIPBOARD -> TablerIcons.Clipboard
         // Drawn by hand: the vector Search glyph is a circle plus a stroke, and
@@ -404,6 +403,29 @@ class KeyGridView @JvmOverloads constructor(
         canvas.drawLine(cx + s * 0.45f, cy + s * 0.45f, cx + s * 0.95f, cy + s * 0.95f, iconPaint)
     }
 
+    /** A round face with two eyes and an open smile, drawn in the label colour. */
+    private fun drawSmiley(canvas: Canvas, r: RectF) {
+        val rad = minOf(r.height(), r.width()) * 0.32f
+        val cx = r.centerX()
+        val cy = r.centerY()
+        smileyPaint.color = labelPaint.color
+        smileyPaint.style = Paint.Style.STROKE
+        smileyPaint.strokeWidth = rad * 0.13f
+        canvas.drawCircle(cx, cy, rad * 0.9f, smileyPaint)
+        smileyPaint.style = Paint.Style.FILL
+        canvas.drawCircle(cx - rad * 0.36f, cy - rad * 0.25f, rad * 0.13f, smileyPaint)
+        canvas.drawCircle(cx + rad * 0.36f, cy - rad * 0.25f, rad * 0.13f, smileyPaint)
+        val top = cy + rad * 0.12f
+        val w = rad * 0.5f
+        smileyMouth.reset()
+        smileyMouth.addArc(RectF(cx - w, top - w, cx + w, top + w), 0f, 180f)
+        smileyMouth.close()
+        canvas.drawPath(smileyMouth, smileyPaint)
+    }
+
+    private val smileyPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val smileyMouth = android.graphics.Path()
+
     private fun drawIcon(canvas: Canvas, rect: RectF, vector: ImageVector, kind: KeyKind) {
         val size = minOf(rect.height() * 0.44f, rect.width() * 0.5f)
         if (size <= 0f) return
@@ -447,6 +469,12 @@ class KeyGridView @JvmOverloads constructor(
 
             val label = keys[i].label
             if (label.isEmpty()) continue
+
+            // The emoji key is drawn as the smiley from the design, not as a glyph.
+            if (keys[i].kind == KeyKind.EMOJI && label == "\u263A") {
+                drawSmiley(canvas, r)
+                continue
+            }
 
             // Emoji are drawn larger than text so the emoji page reads at a glance.
             // The test is the code point, not the label's length: a letter is never
@@ -591,7 +619,8 @@ class KeyGridView @JvmOverloads constructor(
                         // press both belong to a finger that is staying put.
                         cancelRepeat()
                         handler.removeCallbacks(longPress)
-                        gliding = true
+                        // The emoji page scrolls rather than glides.
+                        gliding = !pagingEnabled
                         // A swipe is not a press: drop the start key's highlight.
                         if (pressedIndex >= 0) {
                             invalidateKey(pressedIndex)
@@ -850,7 +879,7 @@ class KeyGridView @JvmOverloads constructor(
 
     private companion object {
         /** Keys whose label may be an emoji or a symbol glyph. */
-        val GLYPH_KINDS = setOf(KeyKind.CHARACTER, KeyKind.EMOJI, KeyKind.EMOJI_TAB)
+        val GLYPH_KINDS = setOf(KeyKind.CHARACTER, KeyKind.EMOJI, KeyKind.EMOJI_TAB, KeyKind.GLOBE)
         const val LONG_PRESS_MS = 320L
         const val REPEAT_DELAY_MS = 400L
         const val REPEAT_INTERVAL_MS = 55L

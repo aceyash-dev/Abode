@@ -123,6 +123,7 @@ class AbodeInputMethodService : InputMethodService(),
     private var symbolsMode = false
     private var symbolsPage = 1
     private var emojiSearch = false
+    private var serifOutput = false
     private var emojiQuery = ""
     private var toolbarMode = false
     private var numericMode = false
@@ -379,7 +380,7 @@ class AbodeInputMethodService : InputMethodService(),
                     currentInputConnection?.setComposingText(latinBuffer, 1)
                     return
                 }
-                commit(key.output)
+                commit(if (serifOutput && !emojiMode) serifStyle(key.output) else key.output)
                 if (emojiMode) recordRecent(key.output)
                 if (shifted && !capsLock) setShift(false)
                 trackSentence(key.output)
@@ -407,6 +408,11 @@ class AbodeInputMethodService : InputMethodService(),
             KeyKind.UNDO -> sendUndo()
             KeyKind.SPEAK -> speakField()
             KeyKind.SEARCH_WEB -> searchWeb()
+            KeyKind.CHYME -> toggleChyme()
+            KeyKind.SERIF_TOGGLE -> {
+                serifOutput = !serifOutput
+                applyLayout()
+            }
             KeyKind.EMOJI -> toggleEmoji()
             KeyKind.EMOJI_TAB -> selectEmojiCategory(key.output.toIntOrNull() ?: 0)
             KeyKind.EMOJI_MORE -> nextEmojiPage()
@@ -675,7 +681,7 @@ class AbodeInputMethodService : InputMethodService(),
         grid.keyboardLayout = when {
             emojiSearch -> KeyboardLayout.qwerty(shifted = false, numberRow = true, capsLock = false, enterLabel = enterLabel())
             clipboardMode -> KeyboardLayout.clipboard(clipHistory.toList())
-            toolbarMode -> KeyboardLayout.editing()
+            toolbarMode -> KeyboardLayout.editing(serifOn = serifOutput)
             numericMode -> KeyboardLayout.numeric()
             symbolsMode -> KeyboardLayout.symbols(symbolsPage)
             emojiMode -> KeyboardLayout.emoji(emojiCategory, emojiPage, ::emojiRenders)
@@ -1135,6 +1141,18 @@ class AbodeInputMethodService : InputMethodService(),
         }
         strip.visualizer = false
         setStatus("")
+    }
+
+    /** Bold serif letters (U+1D400 block) for A-Z and a-z; everything else is unchanged. */
+    private fun serifStyle(text: String): String = buildString {
+        for (c in text) {
+            val cp = when (c) {
+                in 'A'..'Z' -> 0x1D400 + (c - 'A')
+                in 'a'..'z' -> 0x1D41A + (c - 'a')
+                else -> c.code
+            }
+            appendCodePoint(cp)
+        }
     }
 
     /** Opens a Google search for the selected text, or the word before the cursor. */

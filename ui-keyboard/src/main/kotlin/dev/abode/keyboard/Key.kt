@@ -39,6 +39,12 @@ enum class KeyKind {
     /** Searches the web for the selected text, or the word before the cursor. */
     SEARCH_WEB,
 
+    /** Opens the Chyme card. */
+    CHYME,
+
+    /** Turns serif output on or off: letters you type become bold serif characters. */
+    SERIF_TOGGLE,
+
     /** Opens emoji search: letters filter the emoji, a tap on one inserts it. */
     EMOJI_SEARCH,
 

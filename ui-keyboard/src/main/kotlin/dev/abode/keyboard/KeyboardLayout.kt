@@ -171,7 +171,7 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
 
             if (bottomStrip) {
                 rows += listOf(
-                    Key("", KeyKind.GLOBE, widthWeight = 1f),
+                    Key("\uD83C\uDF10", KeyKind.GLOBE, widthWeight = 1f),
                     Key("", KeyKind.SPACER, widthWeight = 4f),
                     Key("", KeyKind.VOICE, widthWeight = 1f),
                 )
@@ -195,9 +195,14 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
 
         /** How many pages a category needs. Always at least one. */
         fun emojiPageCount(category: Int, renders: (String) -> Boolean = { true }): Int {
-            val items = EmojiPalette.tabs.getOrNull(category)?.emoji.orEmpty().count(renders)
-            return ((items + EMOJI_PER_PAGE - 1) / EMOJI_PER_PAGE).coerceAtLeast(1)
+            val tab = EmojiPalette.tabs.getOrNull(category)
+            val items = tab?.emoji.orEmpty().count(renders)
+            val perPage = if (tab?.name == EmojiPalette.KAOMOJI_NAME) KAOMOJI_PER_PAGE else EMOJI_PER_PAGE
+            return ((items + perPage - 1) / perPage).coerceAtLeast(1)
         }
+
+        /** Kaomoji are long, so one per row, six rows to a page. */
+        private const val KAOMOJI_PER_PAGE = 6
 
         /**
          * The emoji page: one page of a category, a row of category tabs, and a
@@ -207,15 +212,21 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
         fun emoji(category: Int, page: Int, renders: (String) -> Boolean = { true }): KeyboardLayout {
             val catalog = EmojiPalette.tabs
             val current = category.coerceIn(0, catalog.lastIndex)
-            // Only emoji the device font can draw. Anything else would show as a
-            // replacement box, which is the "stupid render" people were seeing.
+            val isKaomoji = catalog[current].name == EmojiPalette.KAOMOJI_NAME
             val items = catalog[current].emoji.filter(renders)
             val pageIndex = page.coerceIn(0, emojiPageCount(current, renders) - 1)
-            val visible = items.drop(pageIndex * EMOJI_PER_PAGE).take(EMOJI_PER_PAGE)
+            val perPage = if (isKaomoji) KAOMOJI_PER_PAGE else EMOJI_PER_PAGE
+            val visible = items.drop(pageIndex * perPage).take(perPage)
 
             val rows = mutableListOf<List<Key>>()
-            visible.chunked(EMOJI_PER_ROW).forEach { row ->
-                rows += row.map { glyph -> Key(glyph, KeyKind.CHARACTER, output = glyph) }
+            // The search bar is the top row, so finding an emoji is one tap away.
+            rows += listOf(Key("Search emoji", KeyKind.EMOJI_SEARCH, widthWeight = 1f))
+            if (isKaomoji) {
+                visible.forEach { text -> rows += listOf(Key(text, KeyKind.CHARACTER, output = text, widthWeight = 1f)) }
+            } else {
+                visible.chunked(EMOJI_PER_ROW).forEach { row ->
+                    rows += row.map { glyph -> Key(glyph, KeyKind.CHARACTER, output = glyph) }
+                }
             }
 
             // The current category is drawn lit, the way the shift key shows its
@@ -234,8 +245,7 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
             rows += listOf(
                 Key("ABC", KeyKind.EMOJI, widthWeight = 1.4f),
                 Key("\u203A", KeyKind.EMOJI_MORE, widthWeight = 1f),
-                Key("", KeyKind.EMOJI_SEARCH, widthWeight = 1f),
-                Key("space", KeyKind.SPACE, output = " ", widthWeight = 3.6f),
+                Key("space", KeyKind.SPACE, output = " ", widthWeight = 4.6f),
                 Key("\u232B", KeyKind.DELETE, widthWeight = 1.2f),
                 Key("return", KeyKind.ENTER, widthWeight = 1.8f),
             )
@@ -246,23 +256,29 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
          * The editing toolbar: the actions the system's own selection menu
          * offers, on the keyboard where the cursor already is.
          */
-        fun editing(): KeyboardLayout = KeyboardLayout(
+        fun editing(serifOn: Boolean = false): KeyboardLayout = KeyboardLayout(
             listOf(
                 listOf(
-                    Key("Select all", KeyKind.SELECT_ALL, widthWeight = 2.4f),
-                    Key("Cut", KeyKind.CUT, widthWeight = 1.6f),
-                    Key("Copy", KeyKind.COPY, widthWeight = 1.6f),
-                    Key("Paste", KeyKind.PASTE, widthWeight = 1.6f),
-                    Key("Undo", KeyKind.UNDO, widthWeight = 1.4f),
-                    Key("Speak", KeyKind.SPEAK, widthWeight = 1.4f),
-                    Key("Clip", KeyKind.CLIPBOARD, widthWeight = 1.4f),
-                    Key("Google", KeyKind.SEARCH_WEB, widthWeight = 1.6f),
+                    Key("Select all", KeyKind.SELECT_ALL, widthWeight = 1f),
+                    Key("Cut", KeyKind.CUT, widthWeight = 1f),
+                    Key("Copy", KeyKind.COPY, widthWeight = 1f),
+                    Key("Paste", KeyKind.PASTE, widthWeight = 1f),
                 ),
                 listOf(
-                    Key("Done", KeyKind.EDIT, widthWeight = 2.4f),
-                    Key("space", KeyKind.SPACE, output = " ", widthWeight = 3.2f),
-                    Key("⌫", KeyKind.DELETE, widthWeight = 1.6f),
-                    Key("return", KeyKind.ENTER, widthWeight = 1.9f),
+                    Key("Undo", KeyKind.UNDO, widthWeight = 1f),
+                    Key("Speak", KeyKind.SPEAK, widthWeight = 1f),
+                    Key("Google", KeyKind.SEARCH_WEB, widthWeight = 1f),
+                    Key("Clip", KeyKind.CLIPBOARD, widthWeight = 1f),
+                ),
+                listOf(
+                    Key("Chyme", KeyKind.CHYME, widthWeight = 1f),
+                    Key("Serif", KeyKind.SERIF_TOGGLE, widthWeight = 1f, active = serifOn),
+                    Key("\u232B", KeyKind.DELETE, widthWeight = 1f),
+                    Key("Done", KeyKind.EDIT, widthWeight = 1f),
+                ),
+                listOf(
+                    Key("space", KeyKind.SPACE, output = " ", widthWeight = 3f),
+                    Key("return", KeyKind.ENTER, widthWeight = 1.6f),
                 ),
             ),
         )
