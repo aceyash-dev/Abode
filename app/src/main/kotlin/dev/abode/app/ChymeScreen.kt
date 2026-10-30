@@ -54,6 +54,8 @@ fun ChymeScreen(onBack: () -> Unit) {
     var apiKey by remember { mutableStateOf(saved.apiKey) }
     var status by remember { mutableStateOf("") }
     var testing by remember { mutableStateOf(false) }
+    var models by remember { mutableStateOf<List<String>>(emptyList()) }
+    var findingModels by remember { mutableStateOf(false) }
 
     fun currentConfig() = ChymeConfig(
         provider = provider,
@@ -145,6 +147,29 @@ fun ChymeScreen(onBack: () -> Unit) {
                     Text("Save")
                 }
                 OutlinedButton(
+                    enabled = !findingModels && currentConfig().isConfigured,
+                    onClick = {
+                        findingModels = true
+                        status = "Looking for models\u2026"
+                        val config = currentConfig()
+                        scope.launch {
+                            runCatching { ChymeClient.models(config) }
+                                .onSuccess { found ->
+                                    models = found
+                                    status = if (found.isEmpty()) {
+                                        "That endpoint listed no models"
+                                    } else {
+                                        "${found.size} models \u2014 tap one to use it"
+                                    }
+                                }
+                                .onFailure { status = it.message ?: "Could not list models" }
+                            findingModels = false
+                        }
+                    },
+                ) {
+                    Text(if (findingModels) "Looking\u2026" else "Find models")
+                }
+                OutlinedButton(
                     enabled = !testing && currentConfig().isConfigured,
                     onClick = {
                         testing = true
@@ -168,6 +193,26 @@ fun ChymeScreen(onBack: () -> Unit) {
 
             if (status.isNotEmpty()) {
                 Text(text = status, style = MaterialTheme.typography.bodyMedium)
+            }
+
+            // The list the endpoint returned. Tapping one writes it into the model
+            // field, so a name that the provider actually serves is one tap away
+            // instead of a guess typed from memory.
+            if (models.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    for (id in models.take(24)) {
+                        if (id == model) {
+                            Button(onClick = { model = id }) { Text(id) }
+                        } else {
+                            OutlinedButton(onClick = { model = id }) { Text(id) }
+                        }
+                    }
+                }
             }
 
             Card {

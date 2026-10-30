@@ -954,7 +954,14 @@ class AbodeInputMethodService : InputMethodService(),
 
     /** Shows the matches as strip slots, or says why there are none. */
     private fun refreshEmojiSearch() {
-        val results = EmojiSearch.search(emojiQuery, 3, ::emojiRenders)
+        // Wrapped because this runs inside the touch handler: an exception here
+        // would take down whichever app the person was typing in.
+        val results = runCatching { EmojiSearch.search(emojiQuery, 3, ::emojiRenders) }
+            .getOrElse {
+                AbodeLog.w("emoji search failed", it)
+                if (::strip.isInitialized) strip.status = "Emoji search failed"
+                return
+            }
         currentSuggestions = results
         if (::strip.isInitialized) {
             strip.suggestions = results
@@ -1084,7 +1091,10 @@ class AbodeInputMethodService : InputMethodService(),
         }
         val text = textForChyme()
         if (text.isBlank()) {
-            chymeCard.showError("Nothing to work on yet")
+            // Write needs a prompt; the other actions need something to rewrite.
+            chymeCard.showError(
+                if (action == AiAction.WRITE) "Type a topic first" else "Nothing to work on yet",
+            )
             return
         }
         chymeCard.showWorking(action)
@@ -1212,22 +1222,15 @@ class AbodeInputMethodService : InputMethodService(),
     private fun switchInputMethod() {
         val manager = getSystemService(INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
             ?: return
-        if (ourSubtypeCount(manager) > 1 && switchToNextInputMethod(true)) return
+        // Language is chosen in the app, not from the keyboard: a globe that
+        // silently changed the script mid-sentence was worse than no globe at all,
+        // and the app has a screen that shows what each language does.
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
             switchToNextInputMethod(false)
         } else {
             @Suppress("DEPRECATION")
             manager.showInputMethodPicker()
         }
-    }
-
-    private fun ourSubtypeCount(manager: android.view.inputmethod.InputMethodManager): Int {
-        val ours = runCatching {
-            manager.enabledInputMethodList.firstOrNull { it.packageName == packageName }
-        }.getOrNull() ?: return 1
-        return runCatching {
-            manager.getEnabledInputMethodSubtypeList(ours, true).size
-        }.getOrDefault(1)
     }
 
     // ---------------------------------------------------------------- voice

@@ -145,5 +145,10 @@ object ChymePrompts {
         AiAction.REPLY ->
             "Write a short, natural reply to the message below. Return only the " +
                 "reply.\n\n$text"
+
+        AiAction.WRITE ->
+            "Write the text that the note below asks for. If the note is a topic, " +
+                "write a short, natural message about it; if it is a half-written " +
+                "sentence, finish it. Return only the text to insert.\n\n$text"
     }
 }

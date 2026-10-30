@@ -52,6 +52,54 @@ object ChymeClient {
             text
         }
 
+    /**
+     * The models the endpoint offers.
+     *
+     * Both wire formats answer on /models, which is what makes a model picker
+     * possible without a hardcoded list that goes stale: OpenAI-compatible
+     * endpoints return {data: [{id}]} and Anthropic returns {data: [{id}]} too.
+     */
+    suspend fun models(config: ChymeConfig): List<String> = withContext(Dispatchers.IO) {
+        if (config.apiKey.isBlank()) throw ChymeException("No key set")
+        val base = config.endpoint.trim().let { endpoint ->
+            val cut = endpoint.indexOf("/v1/")
+            if (cut > 0) endpoint.substring(0, cut) else endpoint.substringBeforeLast('/')
+        }
+        val url = runCatching { URL("$base/v1/models") }.getOrElse {
+            throw ChymeException("That endpoint is not a URL: ${config.endpoint}")
+        }
+        val connection = runCatching { url.openConnection() as HttpURLConnection }.getOrElse {
+            throw ChymeException("Could not open the endpoint")
+        }
+        try {
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 15_000
+            connection.readTimeout = 30_000
+            when (config.provider.wire) {
+                ChymeWire.OPENAI -> connection.setRequestProperty("Authorization", "Bearer ${config.apiKey}")
+                ChymeWire.ANTHROPIC -> {
+                    connection.setRequestProperty("x-api-key", config.apiKey)
+                    connection.setRequestProperty("anthropic-version", "2023-06-01")
+                }
+            }
+            val code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            if (code !in 200..299) throw ChymeException("HTTP $code: ${text.take(160)}")
+            val data = JSONObject(text).optJSONArray("data") ?: return@withContext emptyList()
+            val ids = ArrayList<String>(data.length())
+            for (i in 0 until data.length()) {
+                val id = data.optJSONObject(i)?.optString("id").orEmpty()
+                if (id.isNotBlank()) ids.add(id)
+            }
+            ids.sorted()
+        } catch (e: IOException) {
+            throw ChymeException(e.message ?: "Network error")
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     private fun body(config: ChymeConfig, prompt: String): String {
         val messages = JSONArray().put(
             JSONObject().put("role", "user").put("content", prompt),

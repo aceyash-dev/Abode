@@ -10,6 +10,9 @@ enum class AiAction(val label: String) {
     FIX("Fix grammar"),
     TRANSLATE("Translate"),
     REPLY("Reply"),
+
+    /** Composes new text from what is in the field, rather than rewriting it. */
+    WRITE("Write"),
 }
 
 /**
