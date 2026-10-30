@@ -3,6 +3,7 @@ package dev.abode.keyboard
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.os.SystemClock
@@ -37,6 +38,9 @@ class SuggestionStrip @JvmOverloads constructor(
 
         /** The toolbar button at the left of the strip was tapped. */
         fun onToolbar() {}
+
+        /** The Chyme button, beside the toolbar button, was tapped. */
+        fun onChyme() {}
     }
 
     /** Shows the toolbar button at the left edge; the slots move right to make room. */
@@ -47,11 +51,41 @@ class SuggestionStrip @JvmOverloads constructor(
             buildSlots()
             invalidate()
         }
-    private var toolbarPressed = false
+
+    /** Shows the Chyme button beside the toolbar button; slots move right again. */
+    var chymeButton = false
+        set(value) {
+            if (field == value) return
+            field = value
+            buildSlots()
+            invalidate()
+        }
+
+    private var pressedButton = -1
     private val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val toolbarRect = RectF()
     private var toolbarRendered: VectorPaths.Rendered? = null
-    private val leftInset: Float get() = if (toolbarButton) 44f * density else 0f
+
+    private val buttonCount: Int
+        get() = (if (toolbarButton) 1 else 0) + (if (chymeButton) 1 else 0)
+
+    private val leftInset: Float get() = BUTTON_WIDTH * density * buttonCount
+
+    /** Which button sits at [index]: the toolbar is laid out first, Chyme second. */
+    private fun kindAt(index: Int): Int =
+        if (index == 0 && toolbarButton) BUTTON_TOOLBAR else BUTTON_CHYME
+
+    private fun buttonRectAt(index: Int): RectF {
+        val size = BUTTON_WIDTH * density
+        val left = index * size
+        val top = (height - slotHeight) / 2f
+        return RectF(left, top, left + size, top + slotHeight)
+    }
+
+    private fun buttonAt(x: Float): Int {
+        if (x < 0f) return -1
+        val index = (x / (BUTTON_WIDTH * density)).toInt()
+        return if (index in 0 until buttonCount) index else -1
+    }
 
     var listener: Listener? = null
 
@@ -191,7 +225,7 @@ class SuggestionStrip @JvmOverloads constructor(
         val items = labels()
         // The first suggestion is the one the keyboard expects you to want, so it
         // takes the accent. That is the cue that tapping it is the quick choice.
-        if (toolbarButton) drawToolbarButton(canvas)
+        if (buttonCount > 0) drawButtons(canvas)
         val highlightFirst = suggestions.isNotEmpty()
         var animating = false
         for (i in slots.indices) {
@@ -237,21 +271,50 @@ class SuggestionStrip @JvmOverloads constructor(
         if (animating) postInvalidateOnAnimation()
     }
 
-    private fun drawToolbarButton(canvas: Canvas) {
+    private fun drawButtons(canvas: Canvas) {
+        for (i in 0 until buttonCount) {
+            val r = buttonRectAt(i)
+            val fill = if (pressedButton == i) pressedPaint else slotPaint
+            canvas.drawRoundRect(r, corner, corner, fill)
+            if (kindAt(i) == BUTTON_TOOLBAR) drawGridIcon(canvas, r) else drawSparkle(canvas, r)
+        }
+    }
+
+    private fun drawGridIcon(canvas: Canvas, r: RectF) {
         val size = 20f * density
-        val cx = leftInset / 2f
-        val cy = height / 2f
-        toolbarRect.set(cx - size, cy - size, cx + size, cy + size)
-        val fill = if (toolbarPressed) pressedPaint else slotPaint
-        canvas.drawRoundRect(toolbarRect, corner, corner, fill)
         val rendered = toolbarRendered ?: VectorPaths.render(TablerIcons.LayoutGrid, size * 1.1f)
             .also { toolbarRendered = it }
         canvas.save()
-        canvas.translate(cx - size * 0.55f, cy - size * 0.55f)
+        canvas.translate(r.centerX() - size * 0.55f, r.centerY() - size * 0.55f)
         iconPaint.style = if (rendered.filled) Paint.Style.FILL else Paint.Style.STROKE
         iconPaint.strokeWidth = rendered.strokeWidth
         canvas.drawPath(rendered.path, iconPaint)
         canvas.restore()
+    }
+
+    /**
+     * A four-point star for the Chyme button.
+     *
+     * Drawn rather than taken from the icon set: it is four curves, and a
+     * vector icon here would be the only dependency in the strip's draw path
+     * that can be renamed out from under a build.
+     */
+    private fun drawSparkle(canvas: Canvas, r: RectF) {
+        val s = minOf(r.height() * 0.26f, r.width() * 0.30f)
+        if (s <= 0f) return
+        val cx = r.centerX()
+        val cy = r.centerY()
+        val waist = s * 0.22f
+        val path = Path().apply {
+            moveTo(cx, cy - s)
+            quadTo(cx + waist, cy - waist, cx + s, cy)
+            quadTo(cx + waist, cy + waist, cx, cy + s)
+            quadTo(cx - waist, cy + waist, cx - s, cy)
+            quadTo(cx - waist, cy - waist, cx, cy - s)
+            close()
+        }
+        iconPaint.style = Paint.Style.FILL
+        canvas.drawPath(path, iconPaint)
     }
 
     private fun ellipsise(text: String, maxWidth: Float): String {
@@ -264,8 +327,9 @@ class SuggestionStrip @JvmOverloads constructor(
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                if (toolbarButton && event.x < leftInset) {
-                    toolbarPressed = true
+                val button = buttonAt(event.x)
+                if (button >= 0) {
+                    pressedButton = button
                     invalidate()
                     return true
                 }
@@ -285,10 +349,11 @@ class SuggestionStrip @JvmOverloads constructor(
             }
 
             MotionEvent.ACTION_UP -> {
-                if (toolbarPressed) {
-                    toolbarPressed = false
+                if (pressedButton >= 0) {
+                    val button = pressedButton
+                    pressedButton = -1
                     invalidate()
-                    listener?.onToolbar()
+                    if (kindAt(button) == BUTTON_TOOLBAR) listener?.onToolbar() else listener?.onChyme()
                     performClick()
                     return true
                 }
@@ -306,6 +371,7 @@ class SuggestionStrip @JvmOverloads constructor(
 
             MotionEvent.ACTION_CANCEL -> {
                 pressed = -1
+                pressedButton = -1
                 invalidate()
                 return true
             }
@@ -325,6 +391,11 @@ class SuggestionStrip @JvmOverloads constructor(
 
     private companion object {
         const val MAX_SLOTS = 3
+
+        /** One button's width, in dp. Two buttons inset the slots by twice this. */
+        const val BUTTON_WIDTH = 44f
+        const val BUTTON_TOOLBAR = 0
+        const val BUTTON_CHYME = 1
 
         /** How long one slot waits behind the slot before it. */
         const val STAGGER_MS = 45L

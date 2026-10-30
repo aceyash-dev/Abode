@@ -55,11 +55,15 @@ class MainActivity : ComponentActivity() {
             AbodeTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     var showAppearance by remember { mutableStateOf(false) }
+                    var showChyme by remember { mutableStateOf(false) }
 
-                    if (showAppearance) {
-                        ThemeEditorScreen(onBack = { showAppearance = false })
-                    } else {
-                        SetupScreen(onCustomise = { showAppearance = true })
+                    when {
+                        showAppearance -> ThemeEditorScreen(onBack = { showAppearance = false })
+                        showChyme -> ChymeScreen(onBack = { showChyme = false })
+                        else -> SetupScreen(
+                            onCustomise = { showAppearance = true },
+                            onChyme = { showChyme = true },
+                        )
                     }
                 }
             }
@@ -74,7 +78,7 @@ class MainActivity : ComponentActivity() {
  * settings, so the screen never claims something the system has since undone.
  */
 @Composable
-private fun SetupScreen(onCustomise: () -> Unit) {
+private fun SetupScreen(onCustomise: () -> Unit, onChyme: () -> Unit) {
     val context = LocalContext.current
 
     var enabled by remember { mutableStateOf(isAbodeEnabled(context)) }
@@ -172,6 +176,10 @@ private fun SetupScreen(onCustomise: () -> Unit) {
             Icon(TablerIcons.Palette, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
             Text("Appearance: colours, font and shape")
+        }
+
+        OutlinedButton(onClick = onChyme, modifier = Modifier.fillMaxWidth()) {
+            Text("Chyme: AI key and endpoint")
         }
 
         // Device and voice facts are for troubleshooting, not for the first screen.

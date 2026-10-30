@@ -24,6 +24,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":ai"))
     implementation(project(":ui-keyboard"))
     implementation(project(":engine-text"))
     implementation(project(":engine-voice"))

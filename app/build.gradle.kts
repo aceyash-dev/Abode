@@ -104,6 +104,7 @@ android {
 
 dependencies {
     implementation(project(":ime"))
+    implementation(project(":ai"))
     implementation(project(":engine-voice"))
     implementation(project(":engine-text"))
     implementation(project(":data"))

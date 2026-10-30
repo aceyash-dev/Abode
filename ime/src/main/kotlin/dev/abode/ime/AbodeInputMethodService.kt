@@ -6,9 +6,11 @@ import android.content.Intent
 import android.inputmethodservice.InputMethodService
 import android.os.SystemClock
 import android.text.InputType
+import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -21,6 +23,10 @@ import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import dev.abode.ai.AiAction
+import dev.abode.ai.ChymeClient
+import dev.abode.ai.ChymePrompts
+import dev.abode.ai.ChymeStore
 import dev.abode.core.common.AbodeDispatchers
 import dev.abode.core.common.AbodeLog
 import dev.abode.core.common.theme.KeyboardTheme
@@ -93,9 +99,12 @@ class AbodeInputMethodService : InputMethodService(),
 
     private val learned by lazy { LearnedWords(this) }
 
-    private lateinit var root: LinearLayout
+    private lateinit var root: FrameLayout
     private lateinit var grid: KeyGridView
     private lateinit var strip: SuggestionStrip
+    private lateinit var chymeCard: ChymeCard
+    private var chymeOpen = false
+    private val chymeStore by lazy { ChymeStore(this) }
 
     private var glideDecoder: GlideDecoder? = null
     private var lastCommitWasSpace = false
@@ -186,9 +195,11 @@ class AbodeInputMethodService : InputMethodService(),
         if (!::root.isInitialized) {
             strip = SuggestionStrip(this).apply {
                 toolbarButton = true
+                chymeButton = true
                 listener = object : SuggestionStrip.Listener {
                     override fun onSuggestion(index: Int) = onStripTapped(index)
                     override fun onToolbar() = toggleToolbar()
+                    override fun onChyme() = toggleChyme()
                 }
             }
 
@@ -203,7 +214,7 @@ class AbodeInputMethodService : InputMethodService(),
                 }
             }
 
-            root = LinearLayout(this).apply {
+            val column = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 addView(
                     strip,
@@ -216,6 +227,40 @@ class AbodeInputMethodService : InputMethodService(),
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                 ))
+            }
+
+            chymeCard = ChymeCard(this).apply {
+                visibility = View.GONE
+                listener = object : ChymeCard.Listener {
+                    override fun onAction(action: AiAction) = runChyme(action)
+                    override fun onInsert(text: String) = insertChymeResult(text)
+                    override fun onClose() = closeChyme()
+                    override fun onSettings() = openAbodeApp()
+                }
+            }
+
+            // A frame rather than a column: the Chyme card floats over the keys
+            // instead of pushing them, so the text being rewritten stays visible
+            // behind it.
+            root = FrameLayout(this).apply {
+                addView(
+                    column,
+                    FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.WRAP_CONTENT,
+                    ),
+                )
+                addView(
+                    chymeCard,
+                    FrameLayout.LayoutParams(
+                        minOf(dp(320), resources.displayMetrics.widthPixels - dp(16)),
+                        FrameLayout.LayoutParams.WRAP_CONTENT,
+                        Gravity.TOP or Gravity.START,
+                    ).apply {
+                        leftMargin = dp(8)
+                        topMargin = dp(6)
+                    },
+                )
             }
 
             applyTheme(currentTheme)
@@ -244,6 +289,7 @@ class AbodeInputMethodService : InputMethodService(),
         clipboardMode = false
         emojiMode = false
         emojiPage = 0
+        closeChyme()
         latinBuffer.setLength(0)
         transliterate = isDevanagariSubtype()
         hinglish = isHinglishSubtype()
@@ -602,6 +648,7 @@ class AbodeInputMethodService : InputMethodService(),
         if (::grid.isInitialized) grid.theme = theme
         if (::root.isInitialized) root.background = trayBackground(theme.background)
         if (::strip.isInitialized) strip.applyTheme(theme)
+        if (::chymeCard.isInitialized) chymeCard.applyTheme(theme)
     }
 
     private fun applyLayout() {
@@ -838,6 +885,79 @@ class AbodeInputMethodService : InputMethodService(),
             shifted = false
         }
         applyLayout()
+    }
+
+    // ---------------------------------------------------------------- chyme
+
+    private fun toggleChyme() {
+        if (!::chymeCard.isInitialized) return
+        chymeOpen = !chymeOpen
+        chymeCard.visibility = if (chymeOpen) View.VISIBLE else View.GONE
+        if (chymeOpen) chymeCard.showIdle(chymeStore.load())
+    }
+
+    private fun closeChyme() {
+        chymeOpen = false
+        if (::chymeCard.isInitialized) chymeCard.visibility = View.GONE
+    }
+
+    /**
+     * What an action works on: the selection if there is one, otherwise the
+     * sentence before the cursor. A whole field is too much to rewrite, and one
+     * word is not enough to fix a sentence's grammar.
+     */
+    private fun textForChyme(): String {
+        val ic = currentInputConnection ?: return ""
+        val selected = ic.getSelectedText(0)?.toString().orEmpty()
+        if (selected.isNotBlank()) return selected
+        val before = ic.getTextBeforeCursor(600, 0)?.toString().orEmpty()
+        return before.takeLastWhile { it != '.' && it != '!' && it != '?' && it != '\n' }.trim()
+    }
+
+    private fun runChyme(action: AiAction) {
+        if (!::chymeCard.isInitialized) return
+        val config = chymeStore.load()
+        if (!config.isConfigured) {
+            // Not an error: the card says what is missing and offers the way there.
+            chymeCard.showIdle(config)
+            return
+        }
+        val text = textForChyme()
+        if (text.isBlank()) {
+            chymeCard.showError("Nothing to work on yet")
+            return
+        }
+        chymeCard.showWorking(action)
+        scope.launch {
+            runCatching { ChymeClient.complete(config, ChymePrompts.forAction(action, text)) }
+                .onSuccess { chymeCard.showResult(it) }
+                .onFailure { chymeCard.showError(it.message ?: "Request failed") }
+        }
+    }
+
+    private fun insertChymeResult(text: String) {
+        val ic = currentInputConnection ?: return
+        val selected = ic.getSelectedText(0)?.toString().orEmpty()
+        ic.beginBatchEdit()
+        if (selected.isNotEmpty()) {
+            ic.commitText(text, 1)
+        } else {
+            val before = ic.getTextBeforeCursor(600, 0)?.toString().orEmpty()
+            val sentence = before.takeLastWhile { it != '.' && it != '!' && it != '?' && it != '\n' }
+            if (sentence.isNotEmpty()) ic.deleteSurroundingText(sentence.length, 0)
+            ic.commitText(text, 1)
+        }
+        ic.endBatchEdit()
+        closeChyme()
+        suggestionEngine.onPrefixChanged(currentWordPrefix(), capitalise = false)
+    }
+
+    /** The app is where the key and endpoint live; the card only points at it. */
+    private fun openAbodeApp() {
+        val intent = packageManager.getLaunchIntentForPackage(packageName) ?: return
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching { startActivity(intent) }
+        closeChyme()
     }
 
     /**
