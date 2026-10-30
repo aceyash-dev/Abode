@@ -125,7 +125,6 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
             if (bottomStrip) {
                 rows += listOf(
                     Key("", KeyKind.GLOBE, widthWeight = 1f),
-                    Key("\u270E", KeyKind.EDIT, widthWeight = 1f),
                     Key("", KeyKind.SPACER, widthWeight = 4f),
                     Key("", KeyKind.VOICE, widthWeight = 1f),
                 )
@@ -149,7 +148,7 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
 
         /** How many pages a category needs. Always at least one. */
         fun emojiPageCount(category: Int, renders: (String) -> Boolean = { true }): Int {
-            val items = EmojiCatalog.categories.getOrNull(category)?.emoji.orEmpty().count(renders)
+            val items = EmojiPalette.tabs.getOrNull(category)?.emoji.orEmpty().count(renders)
             return ((items + EMOJI_PER_PAGE - 1) / EMOJI_PER_PAGE).coerceAtLeast(1)
         }
 
@@ -159,7 +158,7 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
          * keyboard's state, so this stays a pure function of its arguments.
          */
         fun emoji(category: Int, page: Int, renders: (String) -> Boolean = { true }): KeyboardLayout {
-            val catalog = EmojiCatalog.categories
+            val catalog = EmojiPalette.tabs
             val current = category.coerceIn(0, catalog.lastIndex)
             // Only emoji the device font can draw. Anything else would show as a
             // replacement box, which is the "stupid render" people were seeing.
