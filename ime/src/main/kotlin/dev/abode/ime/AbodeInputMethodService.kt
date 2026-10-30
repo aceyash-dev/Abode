@@ -1187,12 +1187,87 @@ class AbodeInputMethodService : InputMethodService(),
         connection.inputStream.use { android.graphics.BitmapFactory.decodeStream(it) }
     }.getOrNull()
 
-    /** Inserts the link of the GIF that was tapped. */
+    /**
+     * Sends the GIF that was tapped.
+     *
+     * An attachment when the app takes one, a link when it does not. Text cannot
+     * carry an image, so the only way to send the GIF itself is commitContent with
+     * a content URI — and the field has to have said it accepts images, which is
+     * what contentMimeTypes is for. Most chat apps do; a notes field does not, and
+     * that is what the link fallback is for.
+     */
     private fun pickGifByUrl(url: String) {
         if (url.isBlank()) return
-        commit(url)
-        endGifSearch()
+        val gif = currentGifs.firstOrNull { it.url == url }
+        val media = gif?.url?.takeIf { it.isNotBlank() } ?: url
+        val acceptsImages = currentInputEditorInfo
+            ?.contentMimeTypes
+            ?.any { it.startsWith("image/") } == true
+
+        if (!acceptsImages) {
+            commit(url)
+            endGifSearch()
+            return
+        }
+        scope.launch {
+            val file = kotlinx.coroutines.withContext(AbodeDispatchers.io) { downloadGif(media) }
+            if (file == null) {
+                commit(url)
+            } else {
+                val sent = sendGifAttachment(file)
+                if (!sent) commit(url)
+            }
+            endGifSearch()
+        }
     }
+
+    /** The file, or null when the download or the write failed. */
+    private fun downloadGif(url: String): java.io.File? = runCatching {
+        val dir = java.io.File(cacheDir, "gifs").apply { mkdirs() }
+        val target = java.io.File(dir, url.hashCode().toUInt().toString() + ".gif")
+        if (target.exists() && target.length() > 0) return@runCatching target
+        val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+        connection.connectTimeout = 10_000
+        connection.readTimeout = 20_000
+        connection.inputStream.use { input ->
+            target.outputStream().use { output -> input.copyTo(output) }
+        }
+        target
+    }.getOrNull()
+
+    /**
+     * Hands the file to the app through the field.
+     *
+     * The grant is what makes it work: the receiving app has no permission to read
+     * the keyboard's cache, so the URI is only useful together with the temporary
+     * read grant that goes with the commit. Same path the screenshots use.
+     */
+    private fun sendGifAttachment(file: java.io.File): Boolean {
+        val ic = currentInputConnection ?: return false
+        val editor = currentInputEditorInfo ?: return false
+        return runCatching {
+            val uri = androidx.core.content.FileProvider.getUriForFile(this, CLIP_AUTHORITY, file)
+            val info = android.view.inputmethod.InputContentInfo(
+                uri,
+                android.content.ClipDescription("GIF", arrayOf("image/gif")),
+            )
+            val flags = android.view.inputmethod.InputConnection.INPUT_CONTENT_GRANT_READ_URI_PERMISSION
+            ic.commitContent(info, flags, null)
+        }.getOrDefault(false)
+    }
+
+    private fun downloadGif(url: String): java.io.File? = runCatching {
+        val dir = java.io.File(cacheDir, "gifs").apply { mkdirs() }
+        val target = java.io.File(dir, url.hashCode().toUInt().toString() + ".gif")
+        if (target.exists() && target.length() > 0) return@runCatching target
+        val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+        connection.connectTimeout = 10_000
+        connection.readTimeout = 20_000
+        connection.inputStream.use { input ->
+            target.outputStream().use { output -> input.copyTo(output) }
+        }
+        target
+    }.getOrNull()
 
     /** Inserts the link of the tapped GIF and leaves search. */
     private fun pickGif(index: Int) {

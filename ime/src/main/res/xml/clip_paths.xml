@@ -2,4 +2,6 @@
 <!-- Screenshots the keyboard keeps. Shared with other apps through content URIs only. -->
 <paths>
     <files-path name="clips" path="clips/" />
+    <!-- GIFs downloaded for the panel, served the same way: content URIs only. -->
+    <cache-path name="gifs" path="gifs/" />
 </paths>
