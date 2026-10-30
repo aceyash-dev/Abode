@@ -245,7 +245,8 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
 
             rows += listOf(
                 Key("ABC", KeyKind.EMOJI, widthWeight = 1.4f),
-                Key("space", KeyKind.SPACE, output = " ", widthWeight = 4.6f),
+                Key("GIF", KeyKind.GIF, widthWeight = 1.1f),
+                Key("space", KeyKind.SPACE, output = " ", widthWeight = 3.5f),
                 Key("\u232B", KeyKind.DELETE, widthWeight = 1.2f),
                 Key("return", KeyKind.ENTER, widthWeight = 1.8f),
             )

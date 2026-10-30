@@ -4,6 +4,11 @@ plugins {
 
 }
 
+val giphyKey: String =
+    (project.findProperty("giphyKey") as String?)
+        ?: System.getenv("GIPHY_API_KEY")
+        ?: ""
+
 android {
     namespace = "dev.abode.ai"
     compileSdk = 36
@@ -20,6 +25,16 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+    }
+
+    buildFeatures {
+        buildConfig = true
+    }
+
+    defaultConfig {
+        // Empty in a build that has no secret, and the GIF tab then says so rather
+        // than failing a request. The key is never in the source.
+        buildConfigField("String", "GIPHY_API_KEY", "\"$giphyKey\"")
     }
 }
 

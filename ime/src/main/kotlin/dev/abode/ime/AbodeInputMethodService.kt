@@ -28,6 +28,8 @@ import dev.abode.ai.AiAction
 import dev.abode.ai.ChymeClient
 import dev.abode.ai.ChymePrompts
 import dev.abode.ai.ChymeStore
+import dev.abode.ai.GifResult
+import dev.abode.ai.GiphyClient
 import dev.abode.core.common.AbodeDispatchers
 import dev.abode.core.common.AbodeLog
 import dev.abode.core.common.theme.KeyboardTheme
@@ -51,8 +53,10 @@ import dev.abode.voice.SystemVoiceEngine
 import dev.abode.voice.VoiceEvent
 import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -125,6 +129,11 @@ class AbodeInputMethodService : InputMethodService(),
     private var emojiSearch = false
     private var serifOutput = false
     private var emojiQuery = ""
+
+    private var gifSearch = false
+    private var gifQuery = ""
+    private var gifJob: Job? = null
+    private var currentGifs: List<GifResult> = emptyList()
     private var toolbarMode = false
     private var numericMode = false
     private var clipboardMode = false
@@ -300,6 +309,8 @@ class AbodeInputMethodService : InputMethodService(),
         clipboardMode = false
         emojiMode = false
         emojiPage = 0
+        gifSearch = false
+        gifQuery = ""
         closeChyme()
         latinBuffer.setLength(0)
         transliterate = isDevanagariSubtype()
@@ -352,7 +363,11 @@ class AbodeInputMethodService : InputMethodService(),
      */
     private fun onKeyDown(key: Key) {
         when (key.kind) {
-            KeyKind.DELETE -> if (emojiSearch) backspaceEmojiSearch() else deleteBackward()
+            KeyKind.DELETE -> when {
+                gifSearch -> backspaceGifSearch()
+                emojiSearch -> backspaceEmojiSearch()
+                else -> deleteBackward()
+            }
             else -> Unit
         }
     }
@@ -361,6 +376,11 @@ class AbodeInputMethodService : InputMethodService(),
     private fun onKeyUp(key: Key) {
         when (key.kind) {
             KeyKind.CHARACTER -> {
+                if (gifSearch) {
+                    gifQuery += key.output.lowercase()
+                    refreshGifSearch()
+                    return
+                }
                 if (emojiSearch) {
                     emojiQuery += key.output.lowercase()
                     refreshEmojiSearch()
@@ -388,9 +408,17 @@ class AbodeInputMethodService : InputMethodService(),
                 suggestionEngine.onPrefixChanged(currentWordPrefix(), capitalise = sentenceEnded)
             }
 
-            KeyKind.SPACE -> if (emojiSearch) endEmojiSearch() else handleSpace()
+            KeyKind.SPACE -> when {
+                gifSearch -> endGifSearch()
+                emojiSearch -> endEmojiSearch()
+                else -> handleSpace()
+            }
 
-            KeyKind.ENTER -> if (emojiSearch) endEmojiSearch() else handleEnter()
+            KeyKind.ENTER -> when {
+                gifSearch -> endGifSearch()
+                emojiSearch -> endEmojiSearch()
+                else -> handleEnter()
+            }
             KeyKind.SHIFT -> handleShift()
             KeyKind.SYMBOLS -> toggleSymbols()
             KeyKind.SYMBOLS_PAGE -> {
@@ -420,6 +448,7 @@ class AbodeInputMethodService : InputMethodService(),
             KeyKind.EMOJI_TAB -> selectEmojiCategory(key.output.toIntOrNull() ?: 0)
             KeyKind.EMOJI_MORE -> nextEmojiPage()
             KeyKind.EMOJI_SEARCH -> beginEmojiSearch()
+            KeyKind.GIF -> beginGifSearch()
 
             // TODO(M4): the AI sheet. The rest are handled elsewhere or are inert.
             KeyKind.DELETE, KeyKind.CLIPBOARD, KeyKind.AI, KeyKind.SPACER -> Unit
@@ -613,6 +642,10 @@ class AbodeInputMethodService : InputMethodService(),
      * autocorrect when the strip is offering that instead.
      */
     private fun onStripTapped(index: Int = 0) {
+        if (gifSearch) {
+            pickGif(index)
+            return
+        }
         if (emojiSearch) {
             pickSearchEmoji(index)
             return
@@ -736,12 +769,12 @@ class AbodeInputMethodService : InputMethodService(),
         if (!::grid.isInitialized) return
         // The emoji grid scrolls now rather than paging, so the pager stays off.
         grid.pagingEnabled = false
-        grid.scrollable = emojiMode && !emojiSearch
+        grid.scrollable = emojiMode && !emojiSearch && !gifSearch
         grid.pinnedTopRows = 1
         grid.pinnedRows = 2
         grid.visibleContentRows = 4
         grid.keyboardLayout = when {
-            emojiSearch -> KeyboardLayout.qwerty(shifted = false, numberRow = true, capsLock = false, enterLabel = enterLabel())
+            gifSearch -> KeyboardLayout.qwerty(shifted = false, numberRow = true, capsLock = false, enterLabel = enterLabel())
             clipboardMode -> KeyboardLayout.clipboard(clipHistory.toList())
             toolbarMode -> KeyboardLayout.editing(serifOn = serifOutput, fontLabel = fontName(keyFont))
             numericMode -> KeyboardLayout.numeric()
@@ -857,6 +890,85 @@ class AbodeInputMethodService : InputMethodService(),
         emojiQuery = ""
         applyLayout()
         refreshEmojiSearch()
+    }
+
+    private fun beginGifSearch() {
+        gifSearch = true
+        gifQuery = ""
+        applyLayout()
+        refreshGifSearch()
+    }
+
+    private fun endGifSearch() {
+        gifSearch = false
+        gifQuery = ""
+        gifJob?.cancel()
+        gifJob = null
+        currentGifs = emptyList()
+        currentSuggestions = emptyList()
+        if (::strip.isInitialized) {
+            strip.suggestions = emptyList()
+            strip.status = ""
+        }
+        applyLayout()
+    }
+
+    private fun backspaceGifSearch() {
+        if (gifQuery.isEmpty()) endGifSearch() else {
+            gifQuery = gifQuery.dropLast(1)
+            refreshGifSearch()
+        }
+    }
+
+    /**
+     * Asks Giphy for the query, once the typing pauses.
+     *
+     * A request per keystroke would spend the rate limit on half-typed words and
+     * land out of order; the previous request is cancelled instead, so the strip
+     * only ever shows the answer to the query in the box.
+     */
+    private fun refreshGifSearch() {
+        gifJob?.cancel()
+        if (gifQuery.isBlank()) {
+            currentGifs = emptyList()
+            currentSuggestions = emptyList()
+            if (::strip.isInitialized) {
+                strip.suggestions = emptyList()
+                strip.status = "Type what the GIF should be"
+            }
+            return
+        }
+        if (::strip.isInitialized) {
+            strip.suggestions = emptyList()
+            strip.status = "Searching GIFs\u2026"
+        }
+        gifJob = scope.launch {
+            delay(GIF_SEARCH_DELAY_MS)
+            runCatching { GiphyClient.search(gifQuery, 3) }
+                .onSuccess { results ->
+                    currentGifs = results
+                    currentSuggestions = results.map { it.title }
+                    if (::strip.isInitialized) {
+                        strip.status = if (results.isEmpty()) "No GIFs for \u201C$gifQuery\u201D" else ""
+                        strip.suggestions = results.map { it.title }
+                    }
+                }
+                .onFailure { error ->
+                    currentGifs = emptyList()
+                    currentSuggestions = emptyList()
+                    if (::strip.isInitialized) {
+                        strip.suggestions = emptyList()
+                        strip.status = error.message ?: "Giphy search failed"
+                    }
+                }
+        }
+    }
+
+    /** Inserts the link of the tapped GIF and leaves search. */
+    private fun pickGif(index: Int) {
+        val gif = currentGifs.getOrNull(index) ?: return
+        commit(gif.url)
+        endGifSearch()
     }
 
     private fun endEmojiSearch() {
@@ -1335,6 +1447,9 @@ class AbodeInputMethodService : InputMethodService(),
     private companion object {
         const val MAX_CLIPS = 20
         const val DOUBLE_TAP_MS = 320L
+
+        /** Long enough to finish a word, short enough that the strip feels alive. */
+        const val GIF_SEARCH_DELAY_MS = 350L
 
         /**
          * Subtypes written in Devanagari. They all transliterate through the same

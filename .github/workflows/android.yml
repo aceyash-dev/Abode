@@ -29,6 +29,9 @@ jobs:
         run: gradle :engine-text:testDebugUnitTest -PgitSha=${{ github.sha }} --stacktrace
 
       - name: Assemble debug APK
+        env:
+          # The GIF tab reads this through BuildConfig; the key is never in the source.
+          GIPHY_API_KEY: ${{ secrets.GIPHY_API_KEY }}
         run: gradle :app:assembleDebug -PgitSha=${{ github.sha }} --stacktrace
 
       # One artifact per ABI. A glob over *.apk would pack both into a single
@@ -76,6 +79,8 @@ jobs:
 
       - name: Assemble release APK
         if: steps.release_key.outputs.release_ready == 'true'
+        env:
+          GIPHY_API_KEY: ${{ secrets.GIPHY_API_KEY }}
         run: gradle :app:assembleRelease -PgitSha=${{ github.sha }} --stacktrace
 
       - name: Upload release APK (arm64-v8a)

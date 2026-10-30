@@ -54,6 +54,9 @@ enum class KeyKind {
     /** Opens emoji search: letters filter the emoji, a tap on one inserts it. */
     EMOJI_SEARCH,
 
+    /** Opens Giphy search: letters are the query, a tap inserts a GIF link. */
+    GIF,
+
     /** Draws nothing and does nothing: the gap in the iOS-style bottom strip. */
     SPACER,
 }
