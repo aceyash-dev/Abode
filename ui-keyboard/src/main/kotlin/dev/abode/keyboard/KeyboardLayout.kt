@@ -412,9 +412,24 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
          * inherits the touch handling, the theming and the height, and a clip is
          * committed by the same code path as a letter.
          */
-        fun clipboard(entries: List<String>): KeyboardLayout {
+        fun clipboard(links: List<String>, texts: List<String>): KeyboardLayout {
             val rows = mutableListOf<List<Key>>()
-            entries.take(MAX_CLIP_ROWS).forEach { entry ->
+            // Links are a different kind of thing from a copied sentence: one is
+            // pasted to be followed, the other to be quoted. Grouping them means
+            // the link you copied an hour ago is not buried under six paragraphs.
+            if (links.isNotEmpty()) {
+                rows += listOf(Key("Links", KeyKind.CLIP_HEADER, widthWeight = 1f))
+            }
+            links.take(MAX_CLIP_ROWS).forEach { entry ->
+                val preview = entry.replace("\n", " ").trim().let {
+                    if (it.length <= 34) it else it.take(33) + "\u2026"
+                }
+                rows += listOf(Key(preview, KeyKind.CHARACTER, output = entry))
+            }
+            if (texts.isNotEmpty()) {
+                rows += listOf(Key("Text", KeyKind.CLIP_HEADER, widthWeight = 1f))
+            }
+            texts.take(MAX_CLIP_ROWS).forEach { entry ->
                 val preview = entry.replace("\n", " ").trim().let {
                     if (it.length <= 34) it else it.take(33) + "\u2026"
                 }

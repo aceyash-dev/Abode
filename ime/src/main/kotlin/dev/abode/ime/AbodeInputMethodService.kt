@@ -471,6 +471,8 @@ class AbodeInputMethodService : InputMethodService(),
 
             // TODO(M4): the AI sheet. The rest are handled elsewhere or are inert.
             KeyKind.DELETE, KeyKind.CLIPBOARD, KeyKind.AI, KeyKind.SPACER -> Unit
+            // A section label in the clipboard panel: it draws and does nothing.
+            KeyKind.CLIP_HEADER -> Unit
         }
     }
 
@@ -750,14 +752,18 @@ class AbodeInputMethodService : InputMethodService(),
         if (!::grid.isInitialized) return
         // The emoji grid scrolls now rather than paging, so the pager stays off.
         grid.pagingEnabled = false
-        grid.scrollable = (emojiMode && !emojiSearch && !gifSearch) || gifResultsMode
-        grid.pinnedTopRows = if (gifResultsMode) 0 else 1
-        grid.pinnedRows = if (gifResultsMode) 1 else 2
+        val scrollingPanel = gifResultsMode || clipboardMode
+        grid.scrollable = (emojiMode && !emojiSearch && !gifSearch) || scrollingPanel
+        grid.pinnedTopRows = if (scrollingPanel) 0 else 1
+        grid.pinnedRows = if (scrollingPanel) 1 else 2
         grid.visibleContentRows = 4
         val base = when {
             gifResultsMode -> KeyboardLayout.gifResults(currentGifs.map { it.url })
             gifSearch -> KeyboardLayout.qwerty(shifted = false, numberRow = true, capsLock = false, enterLabel = enterLabel())
-            clipboardMode -> KeyboardLayout.clipboard(clipHistory.toList())
+            clipboardMode -> KeyboardLayout.clipboard(
+                links = clipHistory.filter { isLink(it) },
+                texts = clipHistory.filterNot { isLink(it) },
+            )
             toolbarMode -> KeyboardLayout.editing(typedStyle = typedStyle)
             numericMode -> KeyboardLayout.numeric()
             symbolsMode -> KeyboardLayout.symbols(symbolsPage)
@@ -825,6 +831,10 @@ class AbodeInputMethodService : InputMethodService(),
         symbolsMode = false
         applyLayout()
     }
+
+    /** Whether a clip is a link. Used to group the clipboard panel. */
+    private fun isLink(text: String): Boolean =
+        text.startsWith("http://", ignoreCase = true) || text.startsWith("https://", ignoreCase = true)
 
     private fun captureCurrentClip() {
         val manager = getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager ?: return
@@ -1485,7 +1495,7 @@ class AbodeInputMethodService : InputMethodService(),
     }
 
     private companion object {
-        const val MAX_CLIPS = 20
+        const val MAX_CLIPS = 50
         const val DOUBLE_TAP_MS = 320L
 
 

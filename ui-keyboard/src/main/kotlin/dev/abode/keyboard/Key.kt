@@ -54,6 +54,9 @@ enum class KeyKind {
     /** Opens Giphy search: letters are the query, a tap inserts a GIF link. */
     GIF,
 
+    /** A label row in the clipboard panel: "Links", "Text". Draws, does nothing. */
+    CLIP_HEADER,
+
     /** One result in the GIF grid. [Key.output] is the media URL to insert. */
     GIF_RESULT,
 
