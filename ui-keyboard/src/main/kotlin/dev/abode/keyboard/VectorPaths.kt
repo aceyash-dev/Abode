@@ -3,6 +3,9 @@ package dev.abode.keyboard
 import android.graphics.Path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathNode
+import androidx.compose.ui.graphics.vector.VectorGroup
+import androidx.compose.ui.graphics.vector.VectorNode
+import androidx.compose.ui.graphics.vector.VectorPath
 
 /**
  * Turns a Compose [ImageVector] into an [android.graphics.Path] so the key grid
@@ -24,7 +27,10 @@ object VectorPaths {
         var strokeWidth = 0f
         var filled = false
 
-        for (vectorPath in vector.paths) {
+        val paths = ArrayList<VectorPath>()
+        collectPaths(vector.root, paths)
+
+        for (vectorPath in paths) {
             if (vectorPath.fill != null) filled = true
             strokeWidth = maxOf(strokeWidth, vectorPath.strokeLineWidth * scale)
 
@@ -142,5 +148,20 @@ object VectorPaths {
         }
 
         return Rendered(path, strokeWidth.coerceAtLeast(1.4f), filled)
+    }
+
+    /**
+     * An ImageVector keeps its paths inside a tree of groups, and a group can
+     * carry its own transform. The transform is ignored here: every Tabler icon
+     * is flat, and honouring it would mean carrying a Matrix through the walk.
+     */
+    private fun collectPaths(group: VectorGroup, out: MutableList<VectorPath>) {
+        for (node in group) {
+            when (node) {
+                is VectorPath -> out.add(node)
+                is VectorGroup -> collectPaths(node, out)
+                else -> Unit
+            }
+        }
     }
 }
