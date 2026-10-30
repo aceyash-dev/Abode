@@ -1224,7 +1224,7 @@ class AbodeInputMethodService : InputMethodService(),
     /** The file, or null when the download or the write failed. */
     private fun downloadGif(url: String): java.io.File? = runCatching {
         val dir = java.io.File(cacheDir, "gifs").apply { mkdirs() }
-        val target = java.io.File(dir, url.hashCode().toUInt().toString() + ".gif")
+        val target = java.io.File(dir, java.lang.Integer.toUnsignedString(url.hashCode()) + ".gif")
         if (target.exists() && target.length() > 0) return@runCatching target
         val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
         connection.connectTimeout = 10_000
@@ -1255,19 +1255,6 @@ class AbodeInputMethodService : InputMethodService(),
             ic.commitContent(info, flags, null)
         }.getOrDefault(false)
     }
-
-    private fun downloadGif(url: String): java.io.File? = runCatching {
-        val dir = java.io.File(cacheDir, "gifs").apply { mkdirs() }
-        val target = java.io.File(dir, url.hashCode().toUInt().toString() + ".gif")
-        if (target.exists() && target.length() > 0) return@runCatching target
-        val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-        connection.connectTimeout = 10_000
-        connection.readTimeout = 20_000
-        connection.inputStream.use { input ->
-            target.outputStream().use { output -> input.copyTo(output) }
-        }
-        target
-    }.getOrNull()
 
     /** Inserts the link of the tapped GIF and leaves search. */
     private fun pickGif(index: Int) {
