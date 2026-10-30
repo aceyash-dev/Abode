@@ -1,6 +1,7 @@
 package dev.abode.ime
 
 import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.inputmethodservice.InputMethodService
 import android.os.SystemClock
@@ -25,6 +26,7 @@ import dev.abode.core.common.AbodeLog
 import dev.abode.core.common.theme.KeyboardTheme
 import dev.abode.data.ThemePreferences
 import dev.abode.keyboard.EmojiCatalog
+import dev.abode.keyboard.EmojiPalette
 import dev.abode.keyboard.EmojiSearch
 import dev.abode.keyboard.Key
 import dev.abode.keyboard.KeyGridView
@@ -744,7 +746,7 @@ class AbodeInputMethodService : InputMethodService(),
         endEmojiSearch()
     }
 
-    private val emojiPrefs by lazy { getSharedPreferences("abode_emoji", MODE_PRIVATE) }
+    private val emojiPrefs by lazy { getSharedPreferences("abode_emoji", Context.MODE_PRIVATE) }
 
     /** Recent emoji survive restarts: a small list in the keyboard's own preferences. */
     private fun loadRecents(): List<String> = try {
