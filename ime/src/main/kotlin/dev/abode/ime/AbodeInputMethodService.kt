@@ -105,6 +105,9 @@ class AbodeInputMethodService : InputMethodService(),
     private var transliterate = false
     private var statusText = ""
     private var lastCorrection: Pair<String, String>? = null
+    private var currentSuggestions: List<String> = emptyList()
+    private var capsLock = false
+    private var lastShiftTap = 0L
     private val latinBuffer = StringBuilder()
     private var showStartedAt = 0L
 
@@ -125,6 +128,7 @@ class AbodeInputMethodService : InputMethodService(),
 
         scope.launch {
             suggestionEngine.suggestions.collect { list ->
+                currentSuggestions = list
                 if (::strip.isInitialized) {
                     // A status message outranks suggestions: it is the only
                     // feedback the keyboard has, and an undo offer that gets
@@ -167,7 +171,7 @@ class AbodeInputMethodService : InputMethodService(),
                 maxLines = 1
                 setPadding(dp(12), dp(6), dp(12), dp(6))
                 setTextColor(0xFF5F5F5F.toInt())
-                setOnClickListener { undoLastCorrection() }
+                setOnClickListener { onStripTapped() }
             }
 
             grid = KeyGridView(this).apply {
@@ -280,7 +284,7 @@ class AbodeInputMethodService : InputMethodService(),
                     return
                 }
                 commit(key.output)
-                if (shifted) setShift(false)
+                if (shifted && !capsLock) setShift(false)
                 trackSentence(key.output)
                 suggestionEngine.onPrefixChanged(currentWordPrefix(), capitalise = sentenceEnded)
             }
@@ -288,7 +292,7 @@ class AbodeInputMethodService : InputMethodService(),
             KeyKind.SPACE -> handleSpace()
 
             KeyKind.ENTER -> handleEnter()
-            KeyKind.SHIFT -> setShift(!shifted)
+            KeyKind.SHIFT -> handleShift()
             KeyKind.SYMBOLS -> toggleSymbols()
             KeyKind.NUMERIC -> toggleNumeric()
             KeyKind.GLOBE -> switchInputMethod()
@@ -430,6 +434,52 @@ class AbodeInputMethodService : InputMethodService(),
         commit("\n")
     }
 
+    /**
+     * Tap for one capital, double-tap to lock.
+     *
+     * Caps lock is the difference between typing an acronym and fighting the
+     * keyboard for every letter, and it is the one modifier people reach for
+     * without thinking.
+     */
+    private fun handleShift() {
+        val now = SystemClock.uptimeMillis()
+        if (now - lastShiftTap < DOUBLE_TAP_MS) {
+            capsLock = true
+            setShift(true)
+        } else {
+            capsLock = false
+            setShift(!shifted)
+        }
+        lastShiftTap = now
+    }
+
+    /**
+     * The strip is the keyboard's only affordance for accepting a prediction.
+     * Tapping it takes the top suggestion when there is one, and undoes the last
+     * autocorrect when the strip is offering that instead.
+     */
+    private fun onStripTapped() {
+        if (lastCorrection != null && statusText.startsWith("Undo")) {
+            undoLastCorrection()
+            return
+        }
+        val suggestion = currentSuggestions.firstOrNull() ?: return
+        val ic = currentInputConnection ?: return
+
+        val before = ic.getTextBeforeCursor(40, 0)?.toString().orEmpty()
+        val word = before.takeLastWhile { it.isLetter() || it == '\'' }
+        if (word.equals(suggestion, ignoreCase = true)) return
+
+        ic.beginBatchEdit()
+        if (word.isNotEmpty()) ic.deleteSurroundingText(word.length, 0)
+        ic.commitText("$suggestion ", 1)
+        ic.endBatchEdit()
+
+        currentSuggestions = emptyList()
+        setStatus("")
+        suggestionEngine.clear()
+    }
+
     private fun setShift(value: Boolean) {
         if (shifted == value) return
         shifted = value
@@ -536,7 +586,8 @@ class AbodeInputMethodService : InputMethodService(),
         val manager = getSystemService(INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
             ?: return false
         val tag = runCatching { manager.currentInputMethodSubtype?.languageTag }.getOrNull() ?: return false
-        return tag.startsWith("hi") || tag.startsWith("mr")
+        // Bhojpuri is written in Devanagari too, so it shares the transliterator.
+        return tag.startsWith("hi") || tag.startsWith("mr") || tag.startsWith("bho")
     }
 
     /** Replaces the Latin being composed with its Devanagari reading. */
@@ -724,6 +775,7 @@ class AbodeInputMethodService : InputMethodService(),
 
     private companion object {
         const val MAX_CLIPS = 20
+        const val DOUBLE_TAP_MS = 320L
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()

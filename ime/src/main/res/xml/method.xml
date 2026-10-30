@@ -23,4 +23,9 @@
         android:imeSubtypeMode="keyboard"
         android:label="@string/subtype_mr" />
 
+    <subtype
+        android:imeSubtypeLocale="bho_IN"
+        android:imeSubtypeMode="keyboard"
+        android:label="@string/subtype_bho" />
+
 </input-method>
