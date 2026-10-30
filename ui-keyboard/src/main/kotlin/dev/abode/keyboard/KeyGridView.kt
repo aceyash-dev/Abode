@@ -307,7 +307,10 @@ class KeyGridView @JvmOverloads constructor(
             }
             canvas.drawPath(keyPaths[i], fill)
 
-            val icon = iconFor(keys[i].kind)
+            // Return is drawn as its arrow, unless the field asked for a named action
+            // (send, go, search): then the word is the thing the person needs to see.
+            val namedEnter = keys[i].kind == KeyKind.ENTER && keys[i].label != "return"
+            val icon = if (namedEnter) null else iconFor(keys[i].kind)
             if (icon != null) {
                 drawIcon(canvas, r, icon, keys[i].kind)
                 continue
