@@ -61,6 +61,53 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
             'm' to listOf(")", "µ"),
         )
 
+        /**
+         * What a long press offers on the symbol pages.
+         *
+         * The same idea as the letter row's alternates: the symbol you want is
+         * usually the neighbour of the one you can see, and reaching for the
+         * other page to get it costs two taps and a mode switch.
+         */
+        private val SYMBOL_ALTERNATES = mapOf(
+            ',' to listOf(";", "\u2026"),
+            '.' to listOf(":", "\u2026"),
+            '?' to listOf("\u00BF", "\u203D"),
+            '!' to listOf("\u00A1", "\u203C"),
+            '\'' to listOf("\"", "`"),
+            '-' to listOf("\u2013", "\u2014"),
+            '/' to listOf("\\", "\u00F7"),
+            ':' to listOf(";", "\u00B7"),
+            ';' to listOf(":", "\u2026"),
+            '(' to listOf("[", "{"),
+            ')' to listOf("]", "}"),
+            '&' to listOf("\u00A7", "\u00B6"),
+            '@' to listOf("\u00A9", "\u00AE"),
+            '"' to listOf("'", "\u00AB"),
+            '#' to listOf("\u2116", "\u2248"),
+            '%' to listOf("\u2030", "\u00B0"),
+            '^' to listOf("~", "\u00AC"),
+            '*' to listOf("\u00D7", "\u2022"),
+            '+' to listOf("\u00B1", "\u2211"),
+            '[' to listOf("(", "{"),
+            ']' to listOf(")", "}"),
+            '{' to listOf("[", "("),
+            '}' to listOf("]", ")"),
+            '_' to listOf("-", "\u203F"),
+            '\\' to listOf("/", "|"),
+            '|' to listOf("\\", "\u00A6"),
+            '~' to listOf("\u2248", "\u02DC"),
+            '<' to listOf("\u00AB", "\u2039"),
+            '>' to listOf("\u00BB", "\u203A"),
+            '\u20AC' to listOf("\u00A3", "\u00A5"),
+            '\u00A3' to listOf("\u20AC", "\u00A5"),
+            '\u00A5' to listOf("\u20AC", "\u00A3"),
+            '\u2022' to listOf("\u00B7", "\u25E6"),
+        )
+
+        /** A symbol key, with whatever a long press should offer for it. */
+        private fun symbol(c: String): Key =
+            Key(c, alternates = SYMBOL_ALTERNATES[c.firstOrNull()].orEmpty())
+
         private val DIGIT_ALTERNATES = mapOf(
             '1' to listOf("!", "¹"),
             '2' to listOf("@", "²"),
@@ -282,11 +329,11 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
             // Two pages, as on the system keyboard: the first is the everyday
             // punctuation, the second has room for brackets and maths. The page
             // switch is the key in the lower-left of row three.
-            val punctuation = listOf(".", ",", "?", "!", "'").map { Key(it) }
+            val punctuation = listOf(".", ",", "?", "!", "'").map { symbol(it) }
             val rows: List<List<Key>> = if (page == 2) {
                 listOf(
-                    listOf("[", "]", "{", "}", "#", "%", "^", "*", "+").map { Key(it) },
-                    listOf("_", "\\", "|", "~", "<", ">", "€", "£", "¥", "•").map { Key(it) },
+                    listOf("[", "]", "{", "}", "#", "%", "^", "*", "+").map { symbol(it) },
+                    listOf("_", "\\", "|", "~", "<", ">", "€", "£", "¥", "•").map { symbol(it) },
                     listOf(
                         Key("123", KeyKind.SYMBOLS_PAGE, output = "1", widthWeight = 1.5f),
                     ) + punctuation + listOf(Key("⌫", KeyKind.DELETE, widthWeight = 1.5f)),
@@ -294,7 +341,7 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
             } else {
                 listOf(
                     digits("1234567890"),
-                    listOf("-", "/", ":", ";", "(", ")", "₹", "&", "@", "\"").map { Key(it) },
+                    listOf("-", "/", ":", ";", "(", ")", "₹", "&", "@", "\"").map { symbol(it) },
                     listOf(
                         Key("#+=", KeyKind.SYMBOLS_PAGE, output = "2", widthWeight = 1.5f),
                     ) + punctuation + listOf(Key("⌫", KeyKind.DELETE, widthWeight = 1.5f)),
@@ -307,7 +354,8 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
                         Key("ABC", KeyKind.SYMBOLS, widthWeight = 1.2f),
                         Key("123", KeyKind.NUMERIC, widthWeight = 1.2f),
                         Key("🌐", KeyKind.GLOBE, widthWeight = 1.1f),
-                        Key("space", KeyKind.SPACE, output = " ", widthWeight = 4.2f),
+                        Key("☺", KeyKind.EMOJI, widthWeight = 1.1f),
+                        Key("space", KeyKind.SPACE, output = " ", widthWeight = 3.4f),
                         Key("🎤", KeyKind.VOICE, widthWeight = 1.2f),
                         Key("return", KeyKind.ENTER, widthWeight = 1.9f),
                     ),

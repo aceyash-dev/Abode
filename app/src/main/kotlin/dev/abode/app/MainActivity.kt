@@ -182,6 +182,13 @@ private fun SetupScreen(onCustomise: () -> Unit, onChyme: () -> Unit) {
             Text("Chyme: AI key and endpoint")
         }
 
+        OutlinedButton(
+            onClick = { openSubtypeSettings(context) },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Languages: choose what the globe cycles")
+        }
+
         // Device and voice facts are for troubleshooting, not for the first screen.
         TextButton(onClick = { showDetails = !showDetails }) {
             Text(if (showDetails) "Hide details" else "Voice and device details")
@@ -254,6 +261,30 @@ private fun openInputMethodSettings(context: Context) {
     context.startActivity(
         Intent(Settings.ACTION_INPUT_METHOD_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
     )
+}
+
+/**
+ * The subtypes screen for Abode specifically.
+ *
+ * Android owns the list of languages a keyboard offers, and the only supported
+ * way to change it is that screen. Passing the IME id opens the list filtered to
+ * Abode's subtypes rather than every keyboard's, which is the difference between
+ * a language picker and a settings maze.
+ */
+private fun openSubtypeSettings(context: Context) {
+    val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+    val id = imm?.enabledInputMethodList?.firstOrNull { it.packageName == context.packageName }?.id
+    val intent = if (id != null) {
+        Intent(Settings.ACTION_INPUT_METHOD_SUBTYPE_SETTINGS)
+            .putExtra(InputMethodManager.EXTRA_INPUT_METHOD_ID, id)
+    } else {
+        // Not enabled yet: the subtype screen would be empty, so send them to
+        // step 1 instead of to a list with nothing in it.
+        Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)
+    }
+    runCatching {
+        context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
 }
 
 private fun showKeyboardPicker(context: Context) {

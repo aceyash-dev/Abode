@@ -200,7 +200,7 @@ class ChymeCard(context: Context) : LinearLayout(context) {
         setPadding(dp(10), dp(7), dp(10), dp(7))
     }
 
-    private fun rounded(color: Int, radiusDp: Int): GradientDrawable =
+    private fun rounded(color: Int, radiusDp: Float): GradientDrawable =
         GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             setColor(color)

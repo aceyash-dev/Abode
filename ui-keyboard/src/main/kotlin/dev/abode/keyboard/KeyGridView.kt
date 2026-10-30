@@ -80,11 +80,11 @@ class KeyGridView @JvmOverloads constructor(
         /** Fires on lift after a swipe across the keys. */
         fun onGlide(keys: List<Key>)
 
-        /** A sideways swipe on a paged grid (the emoji page): -1 back, +1 forward. */
+        /** An up or down swipe on a paged grid (the emoji page): -1 back, +1 forward. */
         fun onPage(step: Int) {}
     }
 
-    /** When true, a sideways swipe turns pages instead of gliding. */
+    /** When true, a vertical swipe turns pages instead of gliding. */
     var pagingEnabled = false
     private var pageSwiped = false
     private val pageSlop get() = 24f * resources.displayMetrics.density
@@ -146,6 +146,7 @@ class KeyGridView @JvmOverloads constructor(
     private var gliding = false
     private val glideTrail = Path()
     private val glideKeys = ArrayList<Key>(12)
+    private val glidePoints = ArrayList<FloatArray>(64)
     private var lastGlideX = 0f
     private var lastGlideY = 0f
 
@@ -183,6 +184,11 @@ class KeyGridView @JvmOverloads constructor(
     private val popupPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val popupSelectedPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val trailPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
+    private val trailGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
@@ -235,7 +241,9 @@ class KeyGridView @JvmOverloads constructor(
         lowerPaint.set(labelPaint)
         lowerPaint.textSize = labelPaint.textSize * LOWER_LABEL_SCALE
         trailPaint.color = theme.accent
-        trailPaint.strokeWidth = 4f * density
+        trailPaint.strokeWidth = 3.5f * density
+        trailGlowPaint.color = (theme.accent and 0x00FFFFFF) or (0x40 shl 24)
+        trailGlowPaint.strokeWidth = 10f * density
 
         // Geometry is only rebuilt when the shape actually moved. A colour-only
         // change — which is what dragging a picker produces — used to rebuild
@@ -427,7 +435,12 @@ class KeyGridView @JvmOverloads constructor(
             }
         }
 
-        if (gliding) canvas.drawPath(glideTrail, trailPaint)
+        if (gliding) {
+            // Two strokes: a wide soft one under a thin bright one, so the trail
+            // reads over both a light and a dark theme without a second colour.
+            canvas.drawPath(glideTrail, trailGlowPaint)
+            canvas.drawPath(glideTrail, trailPaint)
+        }
         if (popupKeys.isNotEmpty()) drawPopup(canvas)
     }
 
@@ -481,8 +494,10 @@ class KeyGridView @JvmOverloads constructor(
                 gliding = false
                 pageSwiped = false
                 glideKeys.clear()
+                glidePoints.clear()
                 glideTrail.reset()
                 glideTrail.moveTo(event.x, event.y)
+                glidePoints.add(floatArrayOf(event.x, event.y))
                 lastGlideX = event.x
                 lastGlideY = event.y
 
@@ -507,7 +522,10 @@ class KeyGridView @JvmOverloads constructor(
                 if (pagingEnabled && !pageSwiped) {
                     val dx = event.x - downX
                     val dy = event.y - downY
-                    if (Math.abs(dx) > pageSlop && Math.abs(dx) > 2f * Math.abs(dy)) {
+                    // Vertical, because the emoji grid is taller than it is wide: a
+                    // page turn is a swipe up or down, and a sideways move across
+                    // emoji stays a glide.
+                    if (Math.abs(dy) > pageSlop && Math.abs(dy) > 2f * Math.abs(dx)) {
                         pageSwiped = true
                         cancelRepeat()
                         handler.removeCallbacks(longPress)
@@ -515,7 +533,7 @@ class KeyGridView @JvmOverloads constructor(
                             invalidateKey(pressedIndex)
                             pressedIndex = -1
                         }
-                        listener?.onPage(if (dx < 0) 1 else -1)
+                        listener?.onPage(if (dy < 0) 1 else -1)
                     }
                 }
                 if (pageSwiped) return true
@@ -543,13 +561,11 @@ class KeyGridView @JvmOverloads constructor(
                         val key = keys[index]
                         if (glideKeys.lastOrNull() !== key) glideKeys.add(key)
                     }
-                    glideTrail.quadTo(
-                        lastGlideX,
-                        lastGlideY,
-                        (lastGlideX + event.x) / 2f,
-                        (lastGlideY + event.y) / 2f,
-                    )
-                    glideTrail.lineTo(event.x, event.y)
+                    glidePoints.add(floatArrayOf(event.x, event.y))
+                    // Bounded: a slow swipe across the whole keyboard produces
+                    // hundreds of samples and the tail of them is the same curve.
+                    if (glidePoints.size > MAX_GLIDE_POINTS) glidePoints.removeAt(0)
+                    rebuildGlideTrail()
                     lastGlideX = event.x
                     lastGlideY = event.y
                     invalidate()
@@ -589,6 +605,7 @@ class KeyGridView @JvmOverloads constructor(
                     pressedIndex = -1
                     invalidate()
                     val word = glideKeys.filter { it.kind == KeyKind.CHARACTER }
+                    glidePoints.clear()
                     if (word.size >= MIN_GLIDE_KEYS) {
                         listener?.onGlide(word)
                     } else {
@@ -620,6 +637,7 @@ class KeyGridView @JvmOverloads constructor(
                 dismissPopup()
                 gliding = false
                 glideKeys.clear()
+                glidePoints.clear()
                 glideTrail.reset()
                 pressedIndex = -1
                 invalidate()
@@ -720,6 +738,29 @@ class KeyGridView @JvmOverloads constructor(
         )
     }
 
+    /**
+     * Rebuilds the trail as a curve through the midpoints of consecutive samples,
+     * using the samples themselves as control points.
+     *
+     * The old path was a quad to the previous point plus a line to the current
+     * one, which is why it looked like a chain of straight segments with a kink
+     * at every sample: that construction cannot produce a smooth curve.
+     */
+    private fun rebuildGlideTrail() {
+        glideTrail.reset()
+        if (glidePoints.isEmpty()) return
+        val first = glidePoints.first()
+        glideTrail.moveTo(first[0], first[1])
+        if (glidePoints.size == 1) return
+        for (i in 1 until glidePoints.size - 1) {
+            val point = glidePoints[i]
+            val next = glidePoints[i + 1]
+            glideTrail.quadTo(point[0], point[1], (point[0] + next[0]) / 2f, (point[1] + next[1]) / 2f)
+        }
+        val last = glidePoints.last()
+        glideTrail.lineTo(last[0], last[1])
+    }
+
     private fun indexAt(x: Float, y: Float): Int {
         for (i in rects.indices) {
             if (rects[i].contains(x, y)) return i
@@ -769,6 +810,9 @@ class KeyGridView @JvmOverloads constructor(
         const val REPEAT_DELAY_MS = 400L
         const val REPEAT_INTERVAL_MS = 55L
         const val MIN_GLIDE_KEYS = 3
+
+        /** Samples kept for the trail; older ones no longer change its shape. */
+        const val MAX_GLIDE_POINTS = 96
 
         /** Lowercase letters are drawn at this fraction of the capital size. */
         const val LOWER_LABEL_SCALE = 0.9f
