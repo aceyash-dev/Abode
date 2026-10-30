@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
+import android.os.SystemClock
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
@@ -58,8 +59,10 @@ class SuggestionStrip @JvmOverloads constructor(
     var suggestions: List<String> = emptyList()
         set(value) {
             if (field == value) return
+            val before = labels()
             field = value
             buildSlots()
+            startSlotAnimations(before, labels())
             invalidate()
         }
 
@@ -67,8 +70,10 @@ class SuggestionStrip @JvmOverloads constructor(
     var status: String = ""
         set(value) {
             if (field == value) return
+            val before = labels()
             field = value
             buildSlots()
+            startSlotAnimations(before, labels())
             invalidate()
         }
 
@@ -94,8 +99,39 @@ class SuggestionStrip @JvmOverloads constructor(
         strokeWidth = density
     }
 
-    private val slots = ArrayList<RectF>(3)
+    private val slots = ArrayList<RectF>(MAX_SLOTS)
     private var pressed = -1
+
+    /**
+     * When each slot began its entrance, or -1 for a slot that has settled.
+     *
+     * Gboard fills its strip one slot after another instead of swapping the whole
+     * row at once: the word you most likely want lands first and the alternatives
+     * follow a beat behind. The stagger is also what keeps a fast typist from
+     * seeing the row blink on every keystroke.
+     */
+    private val slotAnimStart = LongArray(MAX_SLOTS) { -1L }
+
+    /** Starts an entrance for every slot whose text actually changed. */
+    private fun startSlotAnimations(before: List<String>, after: List<String>) {
+        val now = SystemClock.uptimeMillis()
+        for (i in 0 until MAX_SLOTS) {
+            val old = before.getOrNull(i)
+            val new = after.getOrNull(i)
+            slotAnimStart[i] = if (new != null && new != old) now + i * STAGGER_MS else -1L
+        }
+    }
+
+    /** 0 while a slot is still waiting its turn, 1 once it has settled. */
+    private fun slotProgress(i: Int): Float {
+        val start = slotAnimStart.getOrElse(i) { -1L }
+        if (start < 0L) return 1f
+        val elapsed = SystemClock.uptimeMillis() - start
+        if (elapsed <= 0L) return 0f
+        val t = (elapsed.toFloat() / SLOT_FADE_MS).coerceIn(0f, 1f)
+        if (t >= 1f) slotAnimStart[i] = -1L
+        return t
+    }
 
     fun applyTheme(theme: KeyboardTheme) {
         slotPaint.color = theme.keyBackground
@@ -125,7 +161,7 @@ class SuggestionStrip @JvmOverloads constructor(
         slots.clear()
         val items = labels()
         if (items.isEmpty() || width == 0) return
-        val count = items.size.coerceAtMost(3)
+        val count = items.size.coerceAtMost(MAX_SLOTS)
         val available = width - sidePadding * 2 - leftInset - gap * (count - 1)
         if (available <= 0f) return
 
@@ -157,25 +193,48 @@ class SuggestionStrip @JvmOverloads constructor(
         // takes the accent. That is the cue that tapping it is the quick choice.
         if (toolbarButton) drawToolbarButton(canvas)
         val highlightFirst = suggestions.isNotEmpty()
+        var animating = false
         for (i in slots.indices) {
             val r = slots[i]
+            val progress = slotProgress(i)
+            if (progress < 1f) animating = true
+            if (progress <= 0f) continue
+            // Fade up a few dp as it arrives, so a new word reads as landing
+            // rather than the row blinking.
+            val rise = (1f - progress) * 6f * density
+            val alpha = (255 * progress).toInt().coerceIn(0, 255)
             val fill = when {
                 i == pressed -> pressedPaint
                 i == 0 && highlightFirst -> accentPaint
                 else -> slotPaint
             }
+            canvas.save()
+            canvas.translate(0f, rise)
+            val fillAlpha = fill.alpha
+            fill.alpha = alpha * fillAlpha / 255
             canvas.drawRoundRect(r, corner, corner, fill)
+            fill.alpha = fillAlpha
             if (i > 0) {
                 val x = (slots[i - 1].right + r.left) / 2f
                 val inset = 8f * density
+                val dividerAlpha = dividerPaint.alpha
+                dividerPaint.alpha = alpha * dividerAlpha / 255
                 canvas.drawLine(x, r.top + inset, x, r.bottom - inset, dividerPaint)
+                dividerPaint.alpha = dividerAlpha
             }
-            val label = items.getOrNull(i) ?: continue
-            val baseline = r.centerY() - (labelPaint.descent() + labelPaint.ascent()) / 2f
-            // Ellipsised by hand: a suggestion wider than its slot would run
-            // into the next one, and a strip of overlapping words is unreadable.
-            canvas.drawText(ellipsise(label, r.width() - 16f * density), r.centerX(), baseline, labelPaint)
+            val label = items.getOrNull(i)
+            if (label != null) {
+                val baseline = r.centerY() - (labelPaint.descent() + labelPaint.ascent()) / 2f
+                val labelAlpha = labelPaint.alpha
+                labelPaint.alpha = alpha * labelAlpha / 255
+                // Ellipsised by hand: a suggestion wider than its slot would run
+                // into the next one, and a strip of overlapping words is unreadable.
+                canvas.drawText(ellipsise(label, r.width() - 16f * density), r.centerX(), baseline, labelPaint)
+                labelPaint.alpha = labelAlpha
+            }
+            canvas.restore()
         }
+        if (animating) postInvalidateOnAnimation()
     }
 
     private fun drawToolbarButton(canvas: Canvas) {
@@ -262,5 +321,15 @@ class SuggestionStrip @JvmOverloads constructor(
     private fun slotAt(x: Float, y: Float): Int {
         for (i in slots.indices) if (slots[i].contains(x, y)) return i
         return -1
+    }
+
+    private companion object {
+        const val MAX_SLOTS = 3
+
+        /** How long one slot waits behind the slot before it. */
+        const val STAGGER_MS = 45L
+
+        /** How long a single slot takes to fade and rise into place. */
+        const val SLOT_FADE_MS = 130f
     }
 }
