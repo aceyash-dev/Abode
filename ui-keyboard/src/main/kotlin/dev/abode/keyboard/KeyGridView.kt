@@ -11,7 +11,6 @@ import android.os.Looper
 import android.util.AttributeSet
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
-import android.view.SoundEffectConstants
 import android.view.View
 import android.view.ViewConfiguration
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -21,6 +20,7 @@ import compose.icons.tablericons.Clipboard
 import compose.icons.tablericons.CornerDownLeft
 import compose.icons.tablericons.Language
 import compose.icons.tablericons.Microphone
+import compose.icons.tablericons.Search
 import compose.icons.tablericons.MoodSmile
 import dev.abode.core.common.theme.KeyShape
 import dev.abode.core.common.theme.KeyboardTheme
@@ -293,6 +293,7 @@ class KeyGridView @JvmOverloads constructor(
         KeyKind.GLOBE -> TablerIcons.Language
         KeyKind.VOICE -> TablerIcons.Microphone
         KeyKind.CLIPBOARD -> TablerIcons.Clipboard
+        KeyKind.EMOJI_SEARCH -> TablerIcons.Search
         // The "ABC" that returns from emoji stays a word: it names the page it goes to.
         KeyKind.EMOJI -> if (key.label == "ABC") null else TablerIcons.MoodSmile
         else -> null
@@ -626,7 +627,7 @@ class KeyGridView @JvmOverloads constructor(
         if (index >= 0) {
             invalidateKey(index)
             if (theme.haptics) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-            if (theme.keySound) playSoundEffect(SoundEffectConstants.CLICK)
+            if (theme.keySound) KeySound.play(context)
             listener?.onKeyDown(keys[index])
         }
     }

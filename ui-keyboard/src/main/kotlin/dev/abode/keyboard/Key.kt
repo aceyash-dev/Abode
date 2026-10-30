@@ -27,11 +27,17 @@ enum class KeyKind {
     /** Switches the grid to the emoji page, and back to letters. */
     EMOJI,
 
+    /** Moves between symbol pages; [Key.output] is the page number. */
+    SYMBOLS_PAGE,
+
     /** Selects an emoji category; [Key.output] is its index. */
     EMOJI_TAB,
 
     /** Moves to the next page of the current emoji category, wrapping. */
     EMOJI_MORE,
+
+    /** Opens emoji search: letters filter the emoji, a tap on one inserts it. */
+    EMOJI_SEARCH,
 
     /** Draws nothing and does nothing: the gap in the iOS-style bottom strip. */
     SPACER,

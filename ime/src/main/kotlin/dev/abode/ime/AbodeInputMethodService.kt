@@ -25,6 +25,7 @@ import dev.abode.core.common.AbodeLog
 import dev.abode.core.common.theme.KeyboardTheme
 import dev.abode.data.ThemePreferences
 import dev.abode.keyboard.EmojiCatalog
+import dev.abode.keyboard.EmojiSearch
 import dev.abode.keyboard.Key
 import dev.abode.keyboard.KeyGridView
 import dev.abode.keyboard.KeyKind
@@ -104,6 +105,9 @@ class AbodeInputMethodService : InputMethodService(),
 
     private var shifted = false
     private var symbolsMode = false
+    private var symbolsPage = 1
+    private var emojiSearch = false
+    private var emojiQuery = ""
     private var toolbarMode = false
     private var numericMode = false
     private var clipboardMode = false
@@ -138,13 +142,14 @@ class AbodeInputMethodService : InputMethodService(),
 
         scope.launch {
             suggestionEngine.suggestions.collect { list ->
-                currentSuggestions = list
+                val merged = withEmojiHints(list)
+                currentSuggestions = merged
                 if (::strip.isInitialized) {
                     // A status message outranks suggestions: it is the only
                     // feedback the keyboard has, and an undo offer that gets
                     // wiped by the next prediction is not an offer.
                     strip.status = statusText
-                    strip.suggestions = if (statusText.isNotEmpty()) emptyList() else list
+                    strip.suggestions = if (statusText.isNotEmpty()) emptyList() else merged
                 }
             }
         }
@@ -272,7 +277,7 @@ class AbodeInputMethodService : InputMethodService(),
      */
     private fun onKeyDown(key: Key) {
         when (key.kind) {
-            KeyKind.DELETE -> deleteBackward()
+            KeyKind.DELETE -> if (emojiSearch) backspaceEmojiSearch() else deleteBackward()
             else -> Unit
         }
     }
@@ -281,6 +286,11 @@ class AbodeInputMethodService : InputMethodService(),
     private fun onKeyUp(key: Key) {
         when (key.kind) {
             KeyKind.CHARACTER -> {
+                if (emojiSearch) {
+                    emojiQuery += key.output.lowercase()
+                    refreshEmojiSearch()
+                    return
+                }
                 if (clipboardMode) {
                     // A clip is a finished string: commit it and get out of the
                     // way rather than staying in the panel.
@@ -302,11 +312,15 @@ class AbodeInputMethodService : InputMethodService(),
                 suggestionEngine.onPrefixChanged(currentWordPrefix(), capitalise = sentenceEnded)
             }
 
-            KeyKind.SPACE -> handleSpace()
+            KeyKind.SPACE -> if (emojiSearch) endEmojiSearch() else handleSpace()
 
-            KeyKind.ENTER -> handleEnter()
+            KeyKind.ENTER -> if (emojiSearch) endEmojiSearch() else handleEnter()
             KeyKind.SHIFT -> handleShift()
             KeyKind.SYMBOLS -> toggleSymbols()
+            KeyKind.SYMBOLS_PAGE -> {
+                symbolsPage = key.output.toIntOrNull() ?: 1
+                applyLayout()
+            }
             KeyKind.NUMERIC -> toggleNumeric()
             KeyKind.GLOBE -> switchInputMethod()
             KeyKind.VOICE -> toggleListening()
@@ -321,6 +335,7 @@ class AbodeInputMethodService : InputMethodService(),
             KeyKind.EMOJI -> toggleEmoji()
             KeyKind.EMOJI_TAB -> selectEmojiCategory(key.output.toIntOrNull() ?: 0)
             KeyKind.EMOJI_MORE -> nextEmojiPage()
+            KeyKind.EMOJI_SEARCH -> beginEmojiSearch()
 
             // TODO(M4): the AI sheet. The rest are handled elsewhere or are inert.
             KeyKind.DELETE, KeyKind.CLIPBOARD, KeyKind.AI, KeyKind.SPACER -> Unit
@@ -514,6 +529,10 @@ class AbodeInputMethodService : InputMethodService(),
      * autocorrect when the strip is offering that instead.
      */
     private fun onStripTapped(index: Int = 0) {
+        if (emojiSearch) {
+            pickSearchEmoji(index)
+            return
+        }
         if (lastCorrection != null && statusText.startsWith("Undo")) {
             undoLastCorrection()
             return
@@ -532,7 +551,7 @@ class AbodeInputMethodService : InputMethodService(),
 
         ic.beginBatchEdit()
         if (word.isNotEmpty()) ic.deleteSurroundingText(word.length, 0)
-        ic.commitText("$suggestion ", 1)
+        ic.commitText(if (isEmojiHint(suggestion)) suggestion else "$suggestion ", 1)
         ic.endBatchEdit()
 
         currentSuggestions = emptyList()
@@ -548,6 +567,7 @@ class AbodeInputMethodService : InputMethodService(),
 
     private fun toggleSymbols() {
         symbolsMode = !symbolsMode
+        symbolsPage = 1
         if (!symbolsMode) shifted = false
         applyLayout()
     }
@@ -557,20 +577,30 @@ class AbodeInputMethodService : InputMethodService(),
      * theme. Nothing in the rendering path knows about individual properties,
      * so a theme change never touches layout code.
      */
+    /** The tray is rounded at its top edge only, as the system keyboards are. */
+    private fun trayBackground(color: Int): android.graphics.drawable.Drawable {
+        val r = 22f * resources.displayMetrics.density
+        return android.graphics.drawable.GradientDrawable().apply {
+            setColor(color)
+            cornerRadii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f)
+        }
+    }
+
     private fun applyTheme(theme: KeyboardTheme) {
         currentTheme = theme
         if (::grid.isInitialized) grid.theme = theme
-        if (::root.isInitialized) root.setBackgroundColor(theme.background)
+        if (::root.isInitialized) root.background = trayBackground(theme.background)
         if (::strip.isInitialized) strip.applyTheme(theme)
     }
 
     private fun applyLayout() {
         if (!::grid.isInitialized) return
         grid.keyboardLayout = when {
+            emojiSearch -> KeyboardLayout.qwerty(shifted = false, capsLock = false, enterLabel = enterLabel())
             clipboardMode -> KeyboardLayout.clipboard(clipHistory.toList())
             toolbarMode -> KeyboardLayout.editing()
             numericMode -> KeyboardLayout.numeric()
-            symbolsMode -> KeyboardLayout.symbols(shifted)
+            symbolsMode -> KeyboardLayout.symbols(symbolsPage)
             emojiMode -> KeyboardLayout.emoji(emojiCategory, emojiPage, ::emojiRenders)
             else -> KeyboardLayout.qwerty(
                 shifted = shifted,
@@ -651,7 +681,65 @@ class AbodeInputMethodService : InputMethodService(),
      * The emoji page is a mode like the numeric page: it stays until the person
      * goes back to letters, so a run of emoji does not keep bouncing them out.
      */
+    /** Two word predictions, then an emoji for the word if it has one, then the rest. */
+    private fun withEmojiHints(words: List<String>): List<String> {
+        val prefix = currentWordPrefix()
+        val hints = if (prefix.length >= 2) EmojiSearch.search(prefix, 1, ::emojiRenders) else emptyList()
+        return (words.take(2) + hints + words.drop(2)).take(3)
+    }
+
+    private fun isEmojiHint(text: String): Boolean =
+        text.isNotEmpty() && text.codePointAt(0) > 0x2000 && text.none { it.isLetterOrDigit() }
+
+    private fun beginEmojiSearch() {
+        emojiSearch = true
+        emojiQuery = ""
+        applyLayout()
+        refreshEmojiSearch()
+    }
+
+    private fun endEmojiSearch() {
+        emojiSearch = false
+        emojiQuery = ""
+        currentSuggestions = emptyList()
+        if (::strip.isInitialized) {
+            strip.suggestions = emptyList()
+            strip.status = ""
+        }
+        applyLayout()
+    }
+
+    private fun backspaceEmojiSearch() {
+        if (emojiQuery.isEmpty()) endEmojiSearch() else {
+            emojiQuery = emojiQuery.dropLast(1)
+            refreshEmojiSearch()
+        }
+    }
+
+    /** Shows the matches as strip slots, or says why there are none. */
+    private fun refreshEmojiSearch() {
+        val results = EmojiSearch.search(emojiQuery, 3, ::emojiRenders)
+        currentSuggestions = results
+        if (::strip.isInitialized) {
+            strip.suggestions = results
+            strip.status = when {
+                results.isNotEmpty() -> ""
+                emojiQuery.isEmpty() -> "Search emoji"
+                else -> "No emoji for \u201C$emojiQuery\u201D"
+            }
+        }
+    }
+
+    /** Inserts the tapped match and leaves search. */
+    private fun pickSearchEmoji(index: Int) {
+        val emoji = currentSuggestions.getOrNull(index) ?: return
+        commit(emoji)
+        endEmojiSearch()
+    }
+
     private fun toggleEmoji() {
+        emojiSearch = false
+        emojiQuery = ""
         emojiMode = !emojiMode
         if (emojiMode) {
             symbolsMode = false

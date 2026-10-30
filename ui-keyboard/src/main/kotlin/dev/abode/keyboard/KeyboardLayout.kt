@@ -179,6 +179,7 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
             rows += listOf(
                 Key("ABC", KeyKind.EMOJI, widthWeight = 1.4f),
                 Key("\u203A", KeyKind.EMOJI_MORE, widthWeight = 1f),
+                Key("", KeyKind.EMOJI_SEARCH, widthWeight = 1f),
                 Key("space", KeyKind.SPACE, output = " ", widthWeight = 3.6f),
                 Key("\u232B", KeyKind.DELETE, widthWeight = 1.2f),
                 Key("return", KeyKind.ENTER, widthWeight = 1.8f),
@@ -234,7 +235,6 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
                     Key(",", KeyKind.CHARACTER, output = ",", widthWeight = 1f),
                     Key(".", KeyKind.CHARACTER, output = ".", widthWeight = 1f),
                     Key("+", KeyKind.CHARACTER, output = "+", widthWeight = 1f),
-                    Key("=", KeyKind.CHARACTER, output = "=", widthWeight = 1f),
                     Key("return", KeyKind.ENTER, widthWeight = 1.8f),
                 ),
             ),
@@ -266,7 +266,7 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
         private const val MAX_CLIP_ROWS = 6
 
         /** The 123 page. */
-        fun symbols(shifted: Boolean = false): KeyboardLayout {
+        fun symbols(page: Int = 1): KeyboardLayout {
             fun digits(row: String): List<Key> = row.map { c ->
                 Key(
                     label = c.toString(),
@@ -275,16 +275,30 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
                 )
             }
 
-            return KeyboardLayout(
+            // Two pages, as on the system keyboard: the first is the everyday
+            // punctuation, the second has room for brackets and maths. The page
+            // switch is the key in the lower-left of row three.
+            val punctuation = listOf(".", ",", "?", "!", "'").map { Key(it) }
+            val rows: List<List<Key>> = if (page == 2) {
+                listOf(
+                    listOf("[", "]", "{", "}", "#", "%", "^", "*", "+").map { Key(it) },
+                    listOf("_", "\\", "|", "~", "<", ">", "€", "£", "¥", "•").map { Key(it) },
+                    listOf(
+                        Key("123", KeyKind.SYMBOLS_PAGE, output = "1", widthWeight = 1.5f),
+                    ) + punctuation + listOf(Key("⌫", KeyKind.DELETE, widthWeight = 1.5f)),
+                )
+            } else {
                 listOf(
                     digits("1234567890"),
                     listOf("-", "/", ":", ";", "(", ")", "₹", "&", "@", "\"").map { Key(it) },
-                    listOf("%", "*", "|", "\\", "<", ">", "[", "]", "{", "}").map { Key(it) },
                     listOf(
-                        shiftKey(shifted, capsLock = false),
-                    ) + listOf("#", "+", "=", ".", ",", "?", "!").map { Key(it) } + listOf(
-                        Key("⌫", KeyKind.DELETE, widthWeight = 1.5f),
-                    ),
+                        Key("#+=", KeyKind.SYMBOLS_PAGE, output = "2", widthWeight = 1.5f),
+                    ) + punctuation + listOf(Key("⌫", KeyKind.DELETE, widthWeight = 1.5f)),
+                )
+            }
+
+            return KeyboardLayout(
+                rows + listOf(
                     listOf(
                         Key("ABC", KeyKind.SYMBOLS, widthWeight = 1.2f),
                         Key("123", KeyKind.NUMERIC, widthWeight = 1.2f),
