@@ -146,6 +146,7 @@ class AbodeInputMethodService : InputMethodService(),
 
     override fun onCreate() {
         super.onCreate()
+        loadKeyFont()
         savedStateController.performRestore(null)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
 
@@ -408,6 +409,8 @@ class AbodeInputMethodService : InputMethodService(),
             KeyKind.UNDO -> sendUndo()
             KeyKind.SPEAK -> speakField()
             KeyKind.SEARCH_WEB -> searchWeb()
+            KeyKind.SELECT_WORD -> selectWord()
+            KeyKind.FONT_CYCLE -> cycleKeyFont()
             KeyKind.CHYME -> toggleChyme()
             KeyKind.SERIF_TOGGLE -> {
                 serifOutput = !serifOutput
@@ -668,11 +671,65 @@ class AbodeInputMethodService : InputMethodService(),
     }
 
     private fun applyTheme(theme: KeyboardTheme) {
-        currentTheme = theme
-        if (::grid.isInitialized) grid.theme = theme
-        if (::root.isInitialized) root.background = trayBackground(theme.background)
-        if (::strip.isInitialized) strip.applyTheme(theme)
-        if (::chymeCard.isInitialized) chymeCard.applyTheme(theme)
+        // The key font is the keyboard's own choice (set from the tools panel),
+        // so it overrides whatever the theme says. Default: the device font.
+        val themed = theme.copy(fontFamily = keyFont)
+        currentTheme = themed
+        if (::grid.isInitialized) grid.theme = themed
+        if (::root.isInitialized) root.background = trayBackground(themed.background)
+        if (::strip.isInitialized) strip.applyTheme(themed)
+        if (::chymeCard.isInitialized) chymeCard.applyTheme(themed)
+    }
+
+    private val fontOrder = listOf(
+        KeyboardTheme.FONT_DEVICE,
+        KeyboardTheme.FONT_SANS,
+        KeyboardTheme.FONT_SERIF,
+        KeyboardTheme.FONT_MONO,
+    )
+
+    private var keyFont = KeyboardTheme.FONT_DEVICE
+
+    private fun fontName(family: String): String = when (family) {
+        KeyboardTheme.FONT_SANS -> "Sans"
+        KeyboardTheme.FONT_SERIF -> "Serif"
+        KeyboardTheme.FONT_MONO -> "Mono"
+        else -> "Device"
+    }
+
+    /** Next key font in the tools panel; remembered across restarts. */
+    private fun cycleKeyFont() {
+        val next = fontOrder[(fontOrder.indexOf(keyFont) + 1) % fontOrder.size]
+        keyFont = next
+        try {
+            getSharedPreferences("abode_keyboard", MODE_PRIVATE).edit().putString("key_font", next).apply()
+        } catch (e: Exception) {
+            AbodeLog.i("key font not saved: ${e.message}")
+        }
+        applyTheme(currentTheme)
+        applyLayout()
+    }
+
+    private fun loadKeyFont() {
+        keyFont = try {
+            getSharedPreferences("abode_keyboard", MODE_PRIVATE).getString("key_font", KeyboardTheme.FONT_DEVICE)
+                ?: KeyboardTheme.FONT_DEVICE
+        } catch (e: Exception) {
+            KeyboardTheme.FONT_DEVICE
+        }
+    }
+
+    /** Selects the word before the cursor, so Copy and Cut act on it. */
+    private fun selectWord() {
+        val ic = currentInputConnection ?: return
+        val before = ic.getTextBeforeCursor(60, 0)?.toString().orEmpty()
+        val length = before.takeLastWhile { it.isLetterOrDigit() || it == '\'' }.length
+        if (length == 0) {
+            setStatus("Nothing to select")
+            return
+        }
+        val cursor = ic.getExtractedText(android.view.inputmethod.ExtractedTextRequest(), 0)?.selectionEnd ?: return
+        ic.setSelection(cursor - length, cursor)
     }
 
     private fun applyLayout() {
@@ -681,7 +738,7 @@ class AbodeInputMethodService : InputMethodService(),
         grid.keyboardLayout = when {
             emojiSearch -> KeyboardLayout.qwerty(shifted = false, numberRow = true, capsLock = false, enterLabel = enterLabel())
             clipboardMode -> KeyboardLayout.clipboard(clipHistory.toList())
-            toolbarMode -> KeyboardLayout.editing(serifOn = serifOutput)
+            toolbarMode -> KeyboardLayout.editing(serifOn = serifOutput, fontLabel = fontName(keyFont))
             numericMode -> KeyboardLayout.numeric()
             symbolsMode -> KeyboardLayout.symbols(symbolsPage)
             emojiMode -> KeyboardLayout.emoji(emojiCategory, emojiPage, ::emojiRenders)

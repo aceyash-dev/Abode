@@ -46,6 +46,7 @@ object ThemeTypeface {
             }
         }
         return when (family) {
+            KeyboardTheme.FONT_DEVICE -> Typeface.DEFAULT
             KeyboardTheme.FONT_SERIF -> Typeface.SERIF
             KeyboardTheme.FONT_MONO -> Typeface.MONOSPACE
             else -> Typeface.create("sans-serif-medium", Typeface.NORMAL)

@@ -31,7 +31,7 @@ data class KeyboardTheme(
      * "mono". A file path wins over this, because importing a font is a more
      * specific choice than picking one of three.
      */
-    val fontFamily: String = FONT_SERIF,
+    val fontFamily: String = FONT_DEVICE,
     val cornerRadiusDp: Float = 12f,
     val keyGapDp: Float = 6f,
     val rowHeightDp: Float = 52f,
@@ -60,6 +60,8 @@ data class KeyboardTheme(
 ) {
     companion object {
 
+        /** The phone's own font: what every other app uses. */
+        const val FONT_DEVICE = "device"
         const val FONT_SANS = "sans"
         const val FONT_SERIF = "serif"
         const val FONT_MONO = "mono"

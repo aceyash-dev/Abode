@@ -256,12 +256,17 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
          * The editing toolbar: the actions the system's own selection menu
          * offers, on the keyboard where the cursor already is.
          */
-        fun editing(serifOn: Boolean = false): KeyboardLayout = KeyboardLayout(
+        /**
+         * The tools panel. The top row is the text toolbar: the same five actions
+         * the system offers on a selection. Below it, the keyboard's own tools.
+         */
+        fun editing(serifOn: Boolean = false, fontLabel: String = "Device"): KeyboardLayout = KeyboardLayout(
             listOf(
                 listOf(
-                    Key("Select all", KeyKind.SELECT_ALL, widthWeight = 1f),
-                    Key("Cut", KeyKind.CUT, widthWeight = 1f),
+                    Key("Select", KeyKind.SELECT_WORD, widthWeight = 1f),
+                    Key("Select all", KeyKind.SELECT_ALL, widthWeight = 1.2f),
                     Key("Copy", KeyKind.COPY, widthWeight = 1f),
+                    Key("Cut", KeyKind.CUT, widthWeight = 1f),
                     Key("Paste", KeyKind.PASTE, widthWeight = 1f),
                 ),
                 listOf(
@@ -273,6 +278,7 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
                 listOf(
                     Key("Chyme", KeyKind.CHYME, widthWeight = 1f),
                     Key("Serif", KeyKind.SERIF_TOGGLE, widthWeight = 1f, active = serifOn),
+                    Key("Font: $fontLabel", KeyKind.FONT_CYCLE, widthWeight = 1.2f),
                     Key("\u232B", KeyKind.DELETE, widthWeight = 1f),
                     Key("Done", KeyKind.EDIT, widthWeight = 1f),
                 ),

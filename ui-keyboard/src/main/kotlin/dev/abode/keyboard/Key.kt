@@ -39,6 +39,12 @@ enum class KeyKind {
     /** Searches the web for the selected text, or the word before the cursor. */
     SEARCH_WEB,
 
+    /** Selects the word before the cursor. */
+    SELECT_WORD,
+
+    /** Cycles the key font: device, sans, serif, monospace. */
+    FONT_CYCLE,
+
     /** Opens the Chyme card. */
     CHYME,
 
