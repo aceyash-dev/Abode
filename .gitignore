@@ -19,4 +19,3 @@ keystore.properties
 keystore/release.p12
 *.keystore
 *.jks
-keystore/release.p12
