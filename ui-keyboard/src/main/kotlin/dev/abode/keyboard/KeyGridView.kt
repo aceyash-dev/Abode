@@ -178,6 +178,10 @@ class KeyGridView @JvmOverloads constructor(
         textAlign = Paint.Align.CENTER
         textSize = 15f * resources.displayMetrics.scaledDensity
     }
+    private val emojiPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.CENTER
+        textSize = 26f * resources.displayMetrics.scaledDensity
+    }
 
     init {
         isClickable = true
@@ -368,8 +372,13 @@ class KeyGridView @JvmOverloads constructor(
             val label = keys[i].label
             if (label.isEmpty()) continue
 
-            val baseline = r.centerY() - (labelPaint.descent() + labelPaint.ascent()) / 2f
-            canvas.drawText(label, r.centerX(), baseline, labelPaint)
+            // Emoji are drawn larger than text so the emoji page reads at a glance.
+            // The test is the code point, not the label's length: a letter is never
+            // an emoji, and the glyph keys that carry one are named kinds.
+            val glyph = keys[i].kind in GLYPH_KINDS && label.codePointAt(0) > 0x2000
+            val paint = if (glyph) emojiPaint else labelPaint
+            val baseline = r.centerY() - (paint.descent() + paint.ascent()) / 2f
+            canvas.drawText(label, r.centerX(), baseline, paint)
         }
 
         if (gliding) canvas.drawPath(glideTrail, trailPaint)
@@ -647,6 +656,8 @@ class KeyGridView @JvmOverloads constructor(
     }
 
     private companion object {
+        /** Keys whose label may be an emoji or a symbol glyph. */
+        val GLYPH_KINDS = setOf(KeyKind.CHARACTER, KeyKind.EMOJI, KeyKind.EMOJI_TAB)
         const val LONG_PRESS_MS = 320L
         const val REPEAT_DELAY_MS = 400L
         const val REPEAT_INTERVAL_MS = 55L

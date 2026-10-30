@@ -75,12 +75,17 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
         )
 
         /**
-         * QWERTY with the number row on top, shift and delete on the third row,
-         * and 123 / globe / space / mic / return along the bottom.
+         * The letter page laid out as the Apple keyboard is: ten letters, nine
+         * indented by half a key on each side, then shift and delete on the third
+         * row. The bottom row is 123, emoji, space and return, with globe, editing
+         * tools and the microphone underneath.
+         *
+         * The number row is off by default; numbers live on the 123 page, as they do
+         * on the system keyboard, so the letter page stays calm.
          */
         fun qwerty(
             shifted: Boolean = false,
-            numberRow: Boolean = true,
+            numberRow: Boolean = false,
             bottomStrip: Boolean = true,
             capsLock: Boolean = false,
             enterLabel: String = "return",
@@ -98,30 +103,84 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
             }
 
             rows += letters("qwertyuiop", shifted, LETTER_ALTERNATES)
-            rows += letters("asdfghjkl", shifted, LETTER_ALTERNATES)
+            rows += indent(letters("asdfghjkl", shifted, LETTER_ALTERNATES))
             rows += listOf(
                 shiftKey(shifted, capsLock),
             ) + letters("zxcvbnm", shifted, LETTER_ALTERNATES) + listOf(
-                Key("⌫", KeyKind.DELETE, widthWeight = 1.5f),
+                Key("\u232B", KeyKind.DELETE, widthWeight = 1.5f),
             )
 
             rows += listOf(
                 Key("123", KeyKind.SYMBOLS, widthWeight = 1.4f),
-                Key("✎", KeyKind.EDIT, widthWeight = 1.2f),
+                Key("\u263A", KeyKind.EMOJI, widthWeight = 1.2f),
                 Key("space", KeyKind.SPACE, output = " ", widthWeight = 4.6f),
                 Key(enterLabel, KeyKind.ENTER, widthWeight = 1.9f),
             )
 
-            // The strip under the keys, as iOS has it: the two keys that are not
-            // about typing sit away from the ones that are.
             if (bottomStrip) {
                 rows += listOf(
                     Key("", KeyKind.GLOBE, widthWeight = 1f),
-                    Key("", KeyKind.SPACER, widthWeight = 5f),
+                    Key("\u270E", KeyKind.EDIT, widthWeight = 1f),
+                    Key("", KeyKind.SPACER, widthWeight = 4f),
                     Key("", KeyKind.VOICE, widthWeight = 1f),
                 )
             }
 
+            return KeyboardLayout(rows)
+        }
+
+        /**
+         * Half a key of space on each end of a row, so it sits between the row
+         * above and below it the way the Apple layout does.
+         */
+        private fun indent(row: List<Key>): List<Key> =
+            listOf(Key("", KeyKind.SPACER, widthWeight = 0.5f)) + row +
+                listOf(Key("", KeyKind.SPACER, widthWeight = 0.5f))
+
+        /** Emoji per page: four rows of nine. */
+        private const val EMOJI_PER_ROW = 9
+        private const val EMOJI_ROWS = 4
+        const val EMOJI_PER_PAGE = EMOJI_PER_ROW * EMOJI_ROWS
+
+        /** How many pages a category needs. Always at least one. */
+        fun emojiPageCount(category: Int): Int {
+            val items = EmojiCatalog.categories.getOrNull(category)?.emoji.orEmpty().size
+            return ((items + EMOJI_PER_PAGE - 1) / EMOJI_PER_PAGE).coerceAtLeast(1)
+        }
+
+        /**
+         * The emoji page: one page of a category, a row of category tabs, and a
+         * bottom row to get back to letters. Category and page come from the
+         * keyboard's state, so this stays a pure function of its arguments.
+         */
+        fun emoji(category: Int, page: Int): KeyboardLayout {
+            val catalog = EmojiCatalog.categories
+            val current = category.coerceIn(0, catalog.lastIndex)
+            val items = catalog[current].emoji
+            val pageIndex = page.coerceIn(0, emojiPageCount(current) - 1)
+            val visible = items.drop(pageIndex * EMOJI_PER_PAGE).take(EMOJI_PER_PAGE)
+
+            val rows = mutableListOf<List<Key>>()
+            visible.chunked(EMOJI_PER_ROW).forEach { row ->
+                rows += row.map { glyph -> Key(glyph, KeyKind.CHARACTER, output = glyph) }
+            }
+
+            rows += catalog.mapIndexed { index, category ->
+                Key(
+                    label = category.tabGlyph,
+                    kind = KeyKind.EMOJI_TAB,
+                    output = index.toString(),
+                    widthWeight = 1f,
+                )
+            }
+
+            rows += listOf(
+                Key("ABC", KeyKind.EMOJI, widthWeight = 1.4f),
+                Key("\u203A", KeyKind.EMOJI_MORE, widthWeight = 1f),
+                Key("space", KeyKind.SPACE, output = " ", widthWeight = 3.6f),
+                Key("\u232B", KeyKind.DELETE, widthWeight = 1.2f),
+                Key("return", KeyKind.ENTER, widthWeight = 1.8f),
+            )
             return KeyboardLayout(rows)
         }
 

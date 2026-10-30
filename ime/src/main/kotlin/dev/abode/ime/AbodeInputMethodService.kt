@@ -24,6 +24,7 @@ import dev.abode.core.common.AbodeDispatchers
 import dev.abode.core.common.AbodeLog
 import dev.abode.core.common.theme.KeyboardTheme
 import dev.abode.data.ThemePreferences
+import dev.abode.keyboard.EmojiCatalog
 import dev.abode.keyboard.Key
 import dev.abode.keyboard.KeyGridView
 import dev.abode.keyboard.KeyKind
@@ -106,6 +107,9 @@ class AbodeInputMethodService : InputMethodService(),
     private var toolbarMode = false
     private var numericMode = false
     private var clipboardMode = false
+    private var emojiMode = false
+    private var emojiCategory = 0
+    private var emojiPage = 0
     private val clipHistory = ArrayDeque<String>()
     private var transliterate = false
     private var statusText = ""
@@ -224,6 +228,8 @@ class AbodeInputMethodService : InputMethodService(),
         toolbarMode = false
         numericMode = false
         clipboardMode = false
+        emojiMode = false
+        emojiPage = 0
         latinBuffer.setLength(0)
         transliterate = isDevanagariSubtype()
         setShift(false)
@@ -312,6 +318,9 @@ class AbodeInputMethodService : InputMethodService(),
             KeyKind.PASTE -> contextAction(android.R.id.paste)
             KeyKind.UNDO -> sendUndo()
             KeyKind.SPEAK -> speakField()
+            KeyKind.EMOJI -> toggleEmoji()
+            KeyKind.EMOJI_TAB -> selectEmojiCategory(key.output.toIntOrNull() ?: 0)
+            KeyKind.EMOJI_MORE -> nextEmojiPage()
 
             // TODO(M4): the AI sheet. The rest are handled elsewhere or are inert.
             KeyKind.DELETE, KeyKind.CLIPBOARD, KeyKind.AI, KeyKind.SPACER -> Unit
@@ -545,9 +554,9 @@ class AbodeInputMethodService : InputMethodService(),
             toolbarMode -> KeyboardLayout.editing()
             numericMode -> KeyboardLayout.numeric()
             symbolsMode -> KeyboardLayout.symbols(shifted)
+            emojiMode -> KeyboardLayout.emoji(emojiCategory, emojiPage)
             else -> KeyboardLayout.qwerty(
                 shifted = shifted,
-                numberRow = true,
                 capsLock = capsLock,
                 enterLabel = enterLabel(),
             )
@@ -609,6 +618,35 @@ class AbodeInputMethodService : InputMethodService(),
 
         clipHistory.addFirst(text)
         while (clipHistory.size > MAX_CLIPS) clipHistory.removeLast()
+    }
+
+    /**
+     * The emoji page is a mode like the numeric page: it stays until the person
+     * goes back to letters, so a run of emoji does not keep bouncing them out.
+     */
+    private fun toggleEmoji() {
+        emojiMode = !emojiMode
+        if (emojiMode) {
+            symbolsMode = false
+            numericMode = false
+            toolbarMode = false
+            clipboardMode = false
+            shifted = false
+        }
+        emojiPage = 0
+        applyLayout()
+    }
+
+    private fun selectEmojiCategory(index: Int) {
+        emojiCategory = index.coerceIn(0, EmojiCatalog.categories.lastIndex)
+        emojiPage = 0
+        applyLayout()
+    }
+
+    private fun nextEmojiPage() {
+        val pages = KeyboardLayout.emojiPageCount(emojiCategory)
+        emojiPage = (emojiPage + 1) % pages
+        applyLayout()
     }
 
     private fun toggleNumeric() {

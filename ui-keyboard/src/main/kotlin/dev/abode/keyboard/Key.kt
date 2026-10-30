@@ -24,6 +24,15 @@ enum class KeyKind {
     UNDO,
     SPEAK,
 
+    /** Switches the grid to the emoji page, and back to letters. */
+    EMOJI,
+
+    /** Selects an emoji category; [Key.output] is its index. */
+    EMOJI_TAB,
+
+    /** Moves to the next page of the current emoji category, wrapping. */
+    EMOJI_MORE,
+
     /** Draws nothing and does nothing: the gap in the iOS-style bottom strip. */
     SPACER,
 }

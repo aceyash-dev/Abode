@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -46,6 +47,9 @@ fun ColorPickerDialog(
     var hue by remember { mutableStateOf(hsv[0]) }
     var saturation by remember { mutableStateOf(hsv[1]) }
     var brightness by remember { mutableStateOf(hsv[2]) }
+    // What the person is typing in the hex box. Null means the box shows the colour
+    // the square and slider describe, so typing and dragging never fight each other.
+    var hexDraft by remember { mutableStateOf<String?>(null) }
 
     val color = Color.hsv(hue, saturation, brightness)
 
@@ -53,6 +57,7 @@ fun ColorPickerDialog(
         if (width <= 0 || height <= 0) return
         saturation = (offset.x / width).coerceIn(0f, 1f)
         brightness = 1f - (offset.y / height).coerceIn(0f, 1f)
+        hexDraft = null
     }
 
     AlertDialog(
@@ -92,7 +97,10 @@ fun ColorPickerDialog(
 
                 Slider(
                     value = hue,
-                    onValueChange = { hue = it },
+                    onValueChange = {
+                        hue = it
+                        hexDraft = null
+                    },
                     valueRange = 0f..360f,
                     modifier = Modifier.padding(top = 12.dp),
                 )
@@ -108,9 +116,28 @@ fun ColorPickerDialog(
                             .clip(RoundedCornerShape(8.dp))
                             .background(color),
                     )
-                    Text(
-                        text = "#%06X".format(0xFFFFFF and color.toArgb()),
-                        modifier = Modifier.padding(top = 2.dp),
+                    OutlinedTextField(
+                        value = hexDraft ?: "%06X".format(0xFFFFFF and color.toArgb()),
+                        onValueChange = { typed ->
+                            // Accepts "#RRGGBB" or "RRGGBB", in either case. The colour
+                            // only moves once all six digits are there.
+                            val digits = typed.removePrefix("#").uppercase()
+                                .filter { it in "0123456789ABCDEF" }
+                                .take(6)
+                            hexDraft = digits
+                            if (digits.length == 6) {
+                                val parsed = android.graphics.Color.parseColor("#$digits")
+                                val parts = FloatArray(3)
+                                android.graphics.Color.colorToHSV(parsed, parts)
+                                hue = parts[0]
+                                saturation = parts[1]
+                                brightness = parts[2]
+                            }
+                        },
+                        label = { Text("Hex") },
+                        prefix = { Text("#") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
             }

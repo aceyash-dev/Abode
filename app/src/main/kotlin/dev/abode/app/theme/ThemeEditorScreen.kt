@@ -72,7 +72,7 @@ fun ThemeEditorScreen(onBack: () -> Unit) {
     var draft by remember { mutableStateOf<KeyboardTheme?>(null) }
     val theme = draft ?: stored
 
-    var pickingRole by remember { mutableStateOf<String?>(null) }
+    var pickingSeed by remember { mutableStateOf(false) }
     var fontError by remember { mutableStateOf<String?>(null) }
 
     // The system back gesture should leave this screen, not close the app.
@@ -181,22 +181,51 @@ fun ThemeEditorScreen(onBack: () -> Unit) {
             update(theme.copy(doubleSpacePeriod = it))
         }
 
-        Text("Colours", style = MaterialTheme.typography.titleSmall)
-        KeyboardTheme.COLOR_ROLES.forEach { (role, _) ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { pickingRole = role }
-                    .padding(vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(role)
+        // One colour makes the whole keyboard. The seed is the only thing to pick;
+        // the six surfaces are derived from it, and shown below so the result is
+        // visible without opening anything.
+        Text("Colour", style = MaterialTheme.typography.titleSmall)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { pickingSeed = true }
+                .padding(vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Box(
+                Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(theme.seedColor)),
+            )
+            Column {
+                Text("Seed colour", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "#%06X".format(0xFFFFFF and theme.seedColor),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+
+        ToggleRow("Dark keyboard", theme.isDark) { dark ->
+            update(KeyboardTheme.fromSeed(theme.seedColor, dark, theme))
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf(
+                theme.background,
+                theme.keyBackground,
+                theme.keyPressed,
+                theme.keyLabel,
+                theme.popupBackground,
+                theme.accent,
+            ).forEach { colour ->
                 Box(
                     Modifier
-                        .size(36.dp)
+                        .size(28.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color(KeyboardTheme.colorOf(theme, role))),
+                        .background(Color(colour)),
                 )
             }
         }
@@ -243,13 +272,13 @@ fun ThemeEditorScreen(onBack: () -> Unit) {
         Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Done") }
     }
 
-    pickingRole?.let { role ->
+    if (pickingSeed) {
         ColorPickerDialog(
-            initial = KeyboardTheme.colorOf(theme, role),
-            onDismiss = { pickingRole = null },
-            onConfirm = { colour ->
-                update(KeyboardTheme.withColor(theme, role, colour))
-                pickingRole = null
+            initial = theme.seedColor,
+            onDismiss = { pickingSeed = false },
+            onConfirm = { seed ->
+                update(KeyboardTheme.fromSeed(seed, theme.isDark, theme))
+                pickingSeed = false
             },
         )
     }
