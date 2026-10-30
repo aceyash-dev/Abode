@@ -118,6 +118,9 @@ class AbodeInputMethodService : InputMethodService(),
     private var emojiPage = 0
     private val clipHistory = ArrayDeque<String>()
     private var transliterate = false
+
+    /** Hinglish is Latin script, so it offers Devanagari as a suggestion instead. */
+    private var hinglish = false
     private var statusText = ""
     private var lastCorrection: Pair<String, String>? = null
     private var currentSuggestions: List<String> = emptyList()
@@ -144,7 +147,8 @@ class AbodeInputMethodService : InputMethodService(),
 
         scope.launch {
             suggestionEngine.suggestions.collect { list ->
-                val merged = withEmojiHints(list)
+                val hinted = withEmojiHints(list)
+                val merged = if (hinglish) withTransliterationHint(hinted) else hinted
                 currentSuggestions = merged
                 if (::strip.isInitialized) {
                     // A status message outranks suggestions: it is the only
@@ -242,6 +246,7 @@ class AbodeInputMethodService : InputMethodService(),
         emojiPage = 0
         latinBuffer.setLength(0)
         transliterate = isDevanagariSubtype()
+        hinglish = isHinglishSubtype()
         setShift(false)
         applyLayout()
         suggestionEngine.clear()
@@ -696,6 +701,22 @@ class AbodeInputMethodService : InputMethodService(),
         return (words.take(2) + hints + words.drop(2)).take(3)
     }
 
+    /**
+     * The Devanagari reading of the word being typed, offered first.
+     *
+     * This is what makes a Hinglish subtype useful without a Romanised Hindi
+     * dictionary: "namaste" puts "नमस्ते" in the first slot, and taking it
+     * replaces the Latin word. Ignoring it costs nothing.
+     */
+    private fun withTransliterationHint(words: List<String>): List<String> {
+        val prefix = currentWordPrefix()
+        if (prefix.length < 2 || prefix.any { !it.isLetter() }) return words
+        val devanagari = DevanagariTransliterator.transliterate(prefix)
+        if (devanagari.isEmpty() || devanagari == prefix) return words
+        if (words.firstOrNull() == devanagari) return words
+        return (listOf(devanagari) + words).take(3)
+    }
+
     private fun isEmojiHint(text: String): Boolean =
         text.isNotEmpty() && text.codePointAt(0) > 0x2000 && text.none { it.isLetterOrDigit() }
 
@@ -830,11 +851,20 @@ class AbodeInputMethodService : InputMethodService(),
      * is — the point of transliteration is that you never learn a second layout.
      */
     private fun isDevanagariSubtype(): Boolean {
+        val tag = currentSubtypeTag() ?: return false
+        return DEVANAGARI_TAGS.any { tag.startsWith(it) }
+    }
+
+    /** Hinglish types in Latin but wants the Devanagari reading offered. */
+    private fun isHinglishSubtype(): Boolean {
+        val tag = currentSubtypeTag() ?: return false
+        return tag.startsWith("en_IN")
+    }
+
+    private fun currentSubtypeTag(): String? {
         val manager = getSystemService(INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
-            ?: return false
-        val tag = runCatching { manager.currentInputMethodSubtype?.languageTag }.getOrNull() ?: return false
-        // Bhojpuri is written in Devanagari too, so it shares the transliterator.
-        return tag.startsWith("hi") || tag.startsWith("mr") || tag.startsWith("bho")
+            ?: return null
+        return runCatching { manager.currentInputMethodSubtype?.languageTag }.getOrNull()
     }
 
     /** Replaces the Latin being composed with its Devanagari reading. */
@@ -892,15 +922,32 @@ class AbodeInputMethodService : InputMethodService(),
         )
     }
 
+    /**
+     * The globe is a language key before it is a keyboard key.
+     *
+     * With more than one Abode subtype enabled it cycles those, which is what a
+     * globe is expected to do; only when there is nothing else of ours does it
+     * fall through to another input method, and then to the system picker.
+     */
     private fun switchInputMethod() {
         val manager = getSystemService(INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
             ?: return
+        if (ourSubtypeCount(manager) > 1 && switchToNextInputMethod(true)) return
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
             switchToNextInputMethod(false)
         } else {
             @Suppress("DEPRECATION")
             manager.showInputMethodPicker()
         }
+    }
+
+    private fun ourSubtypeCount(manager: android.view.inputmethod.InputMethodManager): Int {
+        val ours = runCatching {
+            manager.enabledInputMethodList.firstOrNull { it.packageName == packageName }
+        }.getOrNull() ?: return 1
+        return runCatching {
+            manager.getEnabledInputMethodSubtypeList(ours, true).size
+        }.getOrDefault(1)
     }
 
     // ---------------------------------------------------------------- voice
@@ -1026,6 +1073,14 @@ class AbodeInputMethodService : InputMethodService(),
     private companion object {
         const val MAX_CLIPS = 20
         const val DOUBLE_TAP_MS = 320L
+
+        /**
+         * Subtypes written in Devanagari. They all transliterate through the same
+         * engine, so adding a language here is a label and a locale, not an
+         * engine: Hindi, Marathi, Bhojpuri, Nepali, Maithili, Sanskrit, Konkani
+         * and Dogri.
+         */
+        val DEVANAGARI_TAGS = listOf("hi", "mr", "bho", "ne", "mai", "sa", "kok", "doi")
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()

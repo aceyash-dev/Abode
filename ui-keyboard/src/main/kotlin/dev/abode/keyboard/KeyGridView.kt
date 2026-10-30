@@ -206,6 +206,9 @@ class KeyGridView @JvmOverloads constructor(
         textSize = 26f * resources.displayMetrics.scaledDensity
     }
 
+    /** Lowercase letters, a shade smaller than capitals. Cloned from [labelPaint]. */
+    private val lowerPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
     init {
         isClickable = true
         isHapticFeedbackEnabled = true
@@ -227,6 +230,10 @@ class KeyGridView @JvmOverloads constructor(
         iconCache.clear()
         labelPaint.typeface = ThemeTypeface.forTheme(theme.fontPath)
             ?: Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        // Cloned rather than configured separately, so an imported font and the
+        // theme colour carry over to the smaller size.
+        lowerPaint.set(labelPaint)
+        lowerPaint.textSize = labelPaint.textSize * LOWER_LABEL_SCALE
         trailPaint.color = theme.accent
         trailPaint.strokeWidth = 4f * density
 
@@ -404,7 +411,11 @@ class KeyGridView @JvmOverloads constructor(
             // The test is the code point, not the label's length: a letter is never
             // an emoji, and the glyph keys that carry one are named kinds.
             val glyph = keys[i].kind in GLYPH_KINDS && label.codePointAt(0) > 0x2000
-            val base = if (glyph) emojiPaint else labelPaint
+            val base = when {
+                glyph -> emojiPaint
+                isLowercaseLetter(label) -> lowerPaint
+                else -> labelPaint
+            }
             val paint = fitted(base, label, r.width() - 6f * resources.displayMetrics.density)
             val baseline = r.centerY() - (paint.descent() + paint.ascent()) / 2f
             canvas.drawText(label, r.centerX(), baseline, paint)
@@ -578,7 +589,19 @@ class KeyGridView @JvmOverloads constructor(
                     pressedIndex = -1
                     invalidate()
                     val word = glideKeys.filter { it.kind == KeyKind.CHARACTER }
-                    if (word.size >= MIN_GLIDE_KEYS) listener?.onGlide(word)
+                    if (word.size >= MIN_GLIDE_KEYS) {
+                        listener?.onGlide(word)
+                    } else {
+                        // Too short to decode as a word, so this was a press with
+                        // a wobble on it. Dropping it is the other half of what
+                        // made the keyboard feel like it ignored you.
+                        val target = keys.getOrNull(indexAt(event.x, event.y))
+                            ?: word.lastOrNull()
+                            ?: glideKeys.lastOrNull()
+                        if (target != null && target.kind != KeyKind.SPACER) {
+                            listener?.onKeyUp(target)
+                        }
+                    }
                     glideKeys.clear()
                     glideTrail.reset()
                     return true
@@ -701,8 +724,33 @@ class KeyGridView @JvmOverloads constructor(
         for (i in rects.indices) {
             if (rects[i].contains(x, y)) return i
         }
-        return -1
+        // The gaps between keys are narrow and fingers are not. A touch that
+        // lands a few dp outside every rectangle used to type nothing at all,
+        // which reads as an unresponsive keyboard rather than a near miss. The
+        // nearest key within a touch slop of its edge takes the touch.
+        var best = -1
+        var bestDistance = Float.MAX_VALUE
+        val reach = touchSlop.toFloat()
+        for (i in rects.indices) {
+            if (keys[i].kind == KeyKind.SPACER) continue
+            val r = rects[i]
+            val dx = maxOf(r.left - x, 0f, x - r.right)
+            val dy = maxOf(r.top - y, 0f, y - r.bottom)
+            val distance = Math.hypot(dx.toDouble(), dy.toDouble()).toFloat()
+            if (distance <= reach && distance < bestDistance) {
+                bestDistance = distance
+                best = i
+            }
+        }
+        return best
     }
+
+    /**
+     * A lone lowercase letter. Capitals keep the full size, so pressing shift
+     * changes the look of the grid as well as what it types.
+     */
+    private fun isLowercaseLetter(label: String): Boolean =
+        label.length == 1 && label[0].isLetter() && label[0].isLowerCase()
 
     /** Linear blend of two ARGB colours; [amount] 0 keeps [from], 1 gives [to]. */
     private fun mix(from: Int, to: Int, amount: Float): Int {
@@ -721,5 +769,8 @@ class KeyGridView @JvmOverloads constructor(
         const val REPEAT_DELAY_MS = 400L
         const val REPEAT_INTERVAL_MS = 55L
         const val MIN_GLIDE_KEYS = 3
+
+        /** Lowercase letters are drawn at this fraction of the capital size. */
+        const val LOWER_LABEL_SCALE = 0.9f
     }
 }
