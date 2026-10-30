@@ -23,8 +23,11 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
          */
         private fun letters(row: String, shifted: Boolean, alternates: Map<Char, List<String>>): List<Key> =
             row.map { c ->
+                // The label follows the shift state: a keyboard that shows QWERTY
+                // while typing qwerty makes you check the field to know what the
+                // next letter will be.
                 val output = if (shifted) c.uppercaseChar().toString() else c.toString()
-                Key(label = c.uppercaseChar().toString(), output = output, alternates = alternates[c].orEmpty())
+                Key(label = output, output = output, alternates = alternates[c].orEmpty())
             }
 
         /**
@@ -345,6 +348,38 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
          * The tools panel. The top row is the text toolbar: the same five actions
          * the system offers on a selection. Below it, the keyboard's own tools.
          */
+        /**
+         * The overflow row: one row of tools that sits above the keys.
+         *
+         * It is a row added to the current layout rather than a layout of its own,
+         * so opening the tools does not throw away the suggestions above it — the
+         * predictions stay, and the tools appear under them.
+         */
+        fun toolsRow(typedStyle: Int = 0, groupOpen: Boolean = false): List<List<Key>> {
+            val rows = mutableListOf<List<Key>>()
+            rows += listOf(
+                Key(if (groupOpen) "Edit \u25B4" else "Edit \u25BE", KeyKind.EDIT_GROUP, widthWeight = 1.2f, active = groupOpen),
+                Key("Undo", KeyKind.UNDO, widthWeight = 1f),
+                Key("Speak", KeyKind.SPEAK, widthWeight = 1f),
+                Key("Google", KeyKind.SEARCH_WEB, widthWeight = 1.1f),
+                Key("Clip", KeyKind.CLIPBOARD, widthWeight = 1f),
+                Key("Chyme", KeyKind.CHYME, widthWeight = 1.1f),
+                Key("Text: ${TYPED_STYLE_NAMES.getOrElse(typedStyle) { "Off" }}", KeyKind.SERIF_TOGGLE, widthWeight = 1.3f, active = typedStyle != 0),
+                Key("Done", KeyKind.EDIT, widthWeight = 1f),
+            )
+            if (groupOpen) {
+                // The four selection actions, behind one key until asked for.
+                rows += listOf(
+                    Key("Select", KeyKind.SELECT_WORD, widthWeight = 1f),
+                    Key("Select all", KeyKind.SELECT_ALL, widthWeight = 1.2f),
+                    Key("Copy", KeyKind.COPY, widthWeight = 1f),
+                    Key("Cut", KeyKind.CUT, widthWeight = 1f),
+                    Key("Paste", KeyKind.PASTE, widthWeight = 1f),
+                )
+            }
+            return rows
+        }
+
         fun editing(typedStyle: Int = 0): KeyboardLayout = KeyboardLayout(
             listOf(
                 listOf(

@@ -57,6 +57,9 @@ enum class KeyKind {
     /** A label row in the clipboard panel: "Links", "Text". Draws, does nothing. */
     CLIP_HEADER,
 
+    /** Opens and closes the selection group in the tool row. */
+    EDIT_GROUP,
+
     /** One result in the GIF grid. [Key.output] is the media URL to insert. */
     GIF_RESULT,
 

@@ -151,6 +151,9 @@ class AbodeInputMethodService : InputMethodService(),
             override fun sizeOf(key: String, value: android.graphics.Bitmap): Int = value.byteCount
         }
     private var toolbarMode = false
+
+    /** Whether the selection group is expanded in the tool row. */
+    private var editGroupOpen = false
     private var numericMode = false
     private var clipboardMode = false
     private var emojiMode = false
@@ -326,6 +329,7 @@ class AbodeInputMethodService : InputMethodService(),
         clipboardMode = false
         emojiMode = false
         emojiPage = 0
+        editGroupOpen = false
         gifSearch = false
         gifQuery = ""
         closeChyme()
@@ -458,6 +462,10 @@ class AbodeInputMethodService : InputMethodService(),
             KeyKind.SEARCH_WEB -> searchWeb()
             KeyKind.SELECT_WORD -> selectWord()
             KeyKind.CHYME -> toggleChyme()
+            KeyKind.EDIT_GROUP -> {
+                editGroupOpen = !editGroupOpen
+                applyLayout()
+            }
             KeyKind.SERIF_TOGGLE -> {
                 typedStyle = (typedStyle + 1) % KeyboardLayout.TYPED_STYLE_NAMES.size
                 applyLayout()
@@ -756,7 +764,10 @@ class AbodeInputMethodService : InputMethodService(),
         grid.scrollable = (emojiMode && !emojiSearch && !gifSearch) || scrollingPanel
         grid.pinnedTopRows = if (scrollingPanel) 0 else 1
         grid.pinnedRows = if (scrollingPanel) 1 else 2
-        grid.visibleContentRows = 4
+        // Three content rows, so the emoji page is the same height as the letters
+        // page: at four it was a row taller, and the keyboard grew and shrank as
+        // you moved between them.
+        grid.visibleContentRows = 3
         val base = when {
             gifResultsMode -> KeyboardLayout.gifResults(currentGifs.map { it.url })
             gifSearch -> KeyboardLayout.qwerty(shifted = false, numberRow = true, capsLock = false, enterLabel = enterLabel())
@@ -764,7 +775,6 @@ class AbodeInputMethodService : InputMethodService(),
                 links = clipHistory.filter { isLink(it) },
                 texts = clipHistory.filterNot { isLink(it) },
             )
-            toolbarMode -> KeyboardLayout.editing(typedStyle = typedStyle)
             numericMode -> KeyboardLayout.numeric()
             symbolsMode -> KeyboardLayout.symbols(symbolsPage)
             emojiMode -> KeyboardLayout.emojiScroll(emojiCategory, ::emojiRenders)
@@ -775,7 +785,15 @@ class AbodeInputMethodService : InputMethodService(),
                 enterLabel = enterLabel(),
             )
         }
-        grid.keyboardLayout = base.withSpaceLabel(spaceLabel)
+        // The tool row is prepended to whatever is showing, so the suggestions
+        // above the keys survive it: opening the tools used to replace the whole
+        // keyboard, predictions included.
+        val withTools = if (toolbarMode) {
+            base.copy(rows = KeyboardLayout.toolsRow(typedStyle, editGroupOpen) + base.rows)
+        } else {
+            base
+        }
+        grid.keyboardLayout = withTools.withSpaceLabel(spaceLabel)
     }
 
     private val glyphPaint = android.graphics.Paint()
