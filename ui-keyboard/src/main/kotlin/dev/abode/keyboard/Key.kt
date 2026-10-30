@@ -61,6 +61,8 @@ data class Key(
     val alternates: List<String> = emptyList(),
     /** A toggle that is currently on (shift, caps lock). Drawn in the accent colour. */
     val active: Boolean = false,
+    /** A small second symbol drawn in the corner, tapped with the same key. Set only while shift is off. */
+    val secondary: String? = null,
 ) {
     val hasAlternates: Boolean get() = alternates.isNotEmpty()
 

@@ -175,6 +175,11 @@ class KeyGridView @JvmOverloads constructor(
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
+    private val secondaryPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.RIGHT
+        textSize = 11f * resources.displayMetrics.scaledDensity
+    }
+
     private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
         textSize = 15f * resources.displayMetrics.scaledDensity
@@ -200,6 +205,7 @@ class KeyGridView @JvmOverloads constructor(
         popupPaint.color = theme.popupBackground
         popupSelectedPaint.color = theme.keyPressed
         labelPaint.color = theme.keyLabel
+        secondaryPaint.color = (theme.keyLabel and 0x00FFFFFF) or (0xAA shl 24)
         iconPaint.color = theme.keyLabel
         iconCache.clear()
         labelPaint.typeface = ThemeTypeface.forTheme(theme.fontPath)
@@ -384,6 +390,12 @@ class KeyGridView @JvmOverloads constructor(
             val paint = if (glyph) emojiPaint else labelPaint
             val baseline = r.centerY() - (paint.descent() + paint.ascent()) / 2f
             canvas.drawText(label, r.centerX(), baseline, paint)
+
+            keys[i].secondary?.let { small ->
+                val x = r.right - 7f * resources.displayMetrics.density
+                val y = r.top + secondaryPaint.textSize + 3f * resources.displayMetrics.density
+                canvas.drawText(small, x, y, secondaryPaint)
+            }
         }
 
         if (gliding) canvas.drawPath(glideTrail, trailPaint)

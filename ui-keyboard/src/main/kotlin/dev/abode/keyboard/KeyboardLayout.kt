@@ -110,10 +110,15 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
                 Key("\u232B", KeyKind.DELETE, widthWeight = 1.5f),
             )
 
+            // Comma and full stop either side of the space bar, as on the system
+            // keyboards. The small "/" and "₹" only show while shift is off; with
+            // shift on the keys are plain so the capitals are not crowded.
             rows += listOf(
                 Key("123", KeyKind.SYMBOLS, widthWeight = 1.4f),
-                Key("\u263A", KeyKind.EMOJI, widthWeight = 1.2f),
-                Key("space", KeyKind.SPACE, output = " ", widthWeight = 4.6f),
+                Key("\u263A", KeyKind.EMOJI, widthWeight = 1.1f),
+                Key(",", KeyKind.CHARACTER, output = ",", widthWeight = 1f, secondary = if (shifted) null else "/"),
+                Key("space", KeyKind.SPACE, output = " ", widthWeight = 3.6f),
+                Key(".", KeyKind.CHARACTER, output = ".", widthWeight = 1f, secondary = if (shifted) null else "\u20B9"),
                 Key(enterLabel, KeyKind.ENTER, widthWeight = 1.9f),
             )
 
