@@ -13,6 +13,13 @@ import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
+import androidx.compose.ui.graphics.vector.ImageVector
+import compose.icons.TablerIcons
+import compose.icons.tablericons.Backspace
+import compose.icons.tablericons.Clipboard
+import compose.icons.tablericons.CornerDownLeft
+import compose.icons.tablericons.Microphone
+import compose.icons.tablericons.World
 import dev.abode.core.common.theme.KeyShape
 import dev.abode.core.common.theme.KeyboardTheme
 import java.io.File
@@ -103,6 +110,7 @@ class KeyGridView @JvmOverloads constructor(
 
     private val rects = ArrayList<RectF>(64)
     private val keyPaths = ArrayList<Path>(64)
+    private val iconCache = HashMap<String, VectorPaths.Rendered>()
     private val keys = ArrayList<Key>(64)
     private var pressedIndex = -1
 
@@ -152,6 +160,11 @@ class KeyGridView @JvmOverloads constructor(
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
+    private val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
     private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
         textSize = 15f * resources.displayMetrics.scaledDensity
@@ -169,6 +182,8 @@ class KeyGridView @JvmOverloads constructor(
         popupPaint.color = theme.popupBackground
         popupSelectedPaint.color = theme.keyPressed
         labelPaint.color = theme.keyLabel
+        iconPaint.color = theme.keyLabel
+        iconCache.clear()
         labelPaint.typeface = ThemeTypeface.forTheme(theme.fontPath)
             ?: Typeface.create("sans-serif-medium", Typeface.NORMAL)
         trailPaint.color = theme.accent
@@ -219,14 +234,21 @@ class KeyGridView @JvmOverloads constructor(
 
         val rowHeightPx = (h - gap * (rows.size + 1)) / rows.size
         var top = gap
+        var rowIndex = 0
 
         for (row in rows) {
+            // A honeycomb only reads as one if alternate rows step in by half a
+            // key; without it the hexagons line up in columns and look like
+            // rounded rectangles with clipped corners.
+            val stagger = if (keyShape == KeyShape.HEXAGON && rowIndex % 2 == 1) 0.5f else 0f
             var totalWeight = 0f
             for (key in row) totalWeight += key.widthWeight
             if (totalWeight <= 0f) continue
 
-            val available = w - gap * (row.size + 1)
-            var left = gap
+            val unit = (w - gap * (row.size + 1)) / row.size
+            val inset = unit * stagger
+            val available = w - gap * (row.size + 1) - inset * 2
+            var left = gap + inset
 
             for (key in row) {
                 val keyWidth = available * (key.widthWeight / totalWeight)
@@ -237,7 +259,32 @@ class KeyGridView @JvmOverloads constructor(
                 left += keyWidth + gap
             }
             top += rowHeightPx + gap
+            rowIndex++
         }
+    }
+
+    /** Tabler glyphs for the keys that are actions rather than letters. */
+    private fun iconFor(kind: KeyKind): ImageVector? = when (kind) {
+        KeyKind.DELETE -> TablerIcons.Backspace
+        KeyKind.ENTER -> TablerIcons.CornerDownLeft
+        KeyKind.GLOBE -> TablerIcons.World
+        KeyKind.VOICE -> TablerIcons.Microphone
+        KeyKind.CLIPBOARD -> TablerIcons.Clipboard
+        else -> null
+    }
+
+    private fun drawIcon(canvas: Canvas, rect: RectF, vector: ImageVector, kind: KeyKind) {
+        val size = minOf(rect.height() * 0.44f, rect.width() * 0.5f)
+        if (size <= 0f) return
+
+        val key = "${kind.name}-${size.toInt()}"
+        val rendered = iconCache.getOrPut(key) { VectorPaths.render(vector, size) }
+
+        canvas.save()
+        canvas.translate(rect.centerX() - size / 2f, rect.centerY() - size / 2f)
+        iconPaint.strokeWidth = rendered.strokeWidth
+        canvas.drawPath(rendered.path, iconPaint)
+        canvas.restore()
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -245,6 +292,12 @@ class KeyGridView @JvmOverloads constructor(
         for (i in 0 until count) {
             val r = rects[i]
             canvas.drawPath(keyPaths[i], if (i == pressedIndex) pressedPaint else keyPaint)
+
+            val icon = iconFor(keys[i].kind)
+            if (icon != null) {
+                drawIcon(canvas, r, icon, keys[i].kind)
+                continue
+            }
 
             val label = keys[i].label
             if (label.isEmpty()) continue

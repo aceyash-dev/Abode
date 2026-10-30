@@ -83,11 +83,8 @@ private fun StatusScreen(onCustomise: () -> Unit) {
             Spacer(Modifier.width(12.dp))
             Column {
                 Text(text = "Abode", style = MaterialTheme.typography.displaySmall)
-                // The build the phone is actually running. A bug report that
-                // does not say which commit it came from is a bug report that
-                // starts with a round trip.
                 Text(
-                    text = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) · ${BuildConfig.GIT_SHA}",
+                    text = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }

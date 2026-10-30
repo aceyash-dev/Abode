@@ -21,6 +21,7 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -105,6 +106,17 @@ fun ThemeEditorScreen(onBack: () -> Unit) {
             TextButton(onClick = onBack) { Text("Back") }
             Text("Appearance", style = MaterialTheme.typography.titleLarge)
         }
+
+        // A real text field: the point of a theme is how it types, and the only
+        // way to check that without leaving the app is to type in it here.
+        var testText by remember { mutableStateOf("") }
+        OutlinedTextField(
+            value = testText,
+            onValueChange = { testText = it },
+            label = { Text("Test the keyboard") },
+            placeholder = { Text("Tap here and type with Abode") },
+            modifier = Modifier.fillMaxWidth(),
+        )
 
         ThemePreview(theme)
 
