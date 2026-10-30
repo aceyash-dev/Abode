@@ -160,6 +160,106 @@ class AbodeInputMethodService : InputMethodService(),
     private var emojiCategory = 1
     private var emojiPage = 0
     private val clipHistory = ArrayDeque<String>()
+
+    /** Screenshot files, newest first. The files are the history: they survive restarts. */
+    private val clipImages = ArrayDeque<String>()
+
+    private fun clipsDir(): java.io.File = java.io.File(filesDir, "clips").apply { mkdirs() }
+
+    private fun loadClipImages() {
+        val files = clipsDir().listFiles { f -> f.name.startsWith("shot-") && f.name.endsWith(".png") }
+            ?.sortedByDescending { it.lastModified() }
+            .orEmpty()
+        clipImages.clear()
+        files.take(MAX_SHOTS).forEach { clipImages.addLast(it.absolutePath) }
+    }
+
+    /** A small decoded copy of a screenshot, for drawing a cell. */
+    private fun decodeThumb(path: String): android.graphics.Bitmap? {
+        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeFile(path, bounds)
+        if (bounds.outWidth <= 0) return null
+        val opts = android.graphics.BitmapFactory.Options().apply {
+            inSampleSize = maxOf(1, bounds.outWidth / 240)
+        }
+        return android.graphics.BitmapFactory.decodeFile(path, opts)
+    }
+
+    /** Decodes the thumbnails the panel needs but the cache does not hold. */
+    private fun preloadThumbnails() {
+        clipImages.filter { gifBitmaps.get(it) == null }.forEach { path ->
+            scope.launch {
+                val thumb = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { decodeThumb(path) }
+                if (thumb != null) {
+                    gifBitmaps.put(path, thumb)
+                    if (::grid.isInitialized) grid.invalidate()
+                }
+            }
+        }
+    }
+
+    /**
+     * Saves a screenshot from the clipboard as a PNG in app storage and keeps a
+     * thumbnail for the panel. Runs off the main thread; returns the saved path.
+     */
+    private fun saveScreenshot(uri: android.net.Uri): String? = try {
+        val bitmap = contentResolver.openInputStream(uri)?.use {
+            android.graphics.BitmapFactory.decodeStream(it)
+        } ?: return null
+        val file = java.io.File(clipsDir(), "shot-${System.currentTimeMillis()}.png")
+        file.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+        bitmap.recycle()
+        decodeThumb(file.absolutePath)?.let { gifBitmaps.put(file.absolutePath, it) }
+        file.absolutePath
+    } catch (e: Exception) {
+        AbodeLog.w("screenshot not saved: ${e.message}")
+        null
+    }
+
+    /** Captures an image clip: stores it, then shows it at the top of the panel. */
+    private fun captureScreenshot(uri: android.net.Uri) {
+        scope.launch {
+            val path = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { saveScreenshot(uri) }
+                ?: return@launch
+            clipImages.addFirst(path)
+            while (clipImages.size > MAX_SHOTS) {
+                val old = clipImages.removeLast()
+                gifBitmaps.remove(old)
+                java.io.File(old).delete()
+            }
+            if (clipboardMode) applyLayout()
+        }
+    }
+
+    /**
+     * Tapping a screenshot: committed straight into the field when the app takes
+     * images (the keyboard's commitContent path), otherwise copied so it can be
+     * pasted into an app that does.
+     */
+    private fun shareScreenshot(path: String) {
+        val file = java.io.File(path)
+        if (!file.exists()) {
+            setStatus("That screenshot is gone")
+            return
+        }
+        val uri = androidx.core.content.FileProvider.getUriForFile(this, CLIP_AUTHORITY, file)
+        val ic = currentInputConnection
+        val accepts = currentInputEditorInfo?.contentMimeTypes?.any { it.startsWith("image/") } == true
+        if (accepts && ic != null) {
+            val info = android.view.inputmethod.InputContentInfo(
+                uri,
+                android.content.ClipDescription("Screenshot", arrayOf("image/png")),
+            )
+            val flags = android.view.inputmethod.InputConnection.INPUT_CONTENT_GRANT_READ_URI_PERMISSION
+            if (ic.commitContent(info, flags, null)) {
+                setStatus("")
+                return
+            }
+        }
+        val manager = getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager
+        manager?.setPrimaryClip(android.content.ClipData.newUri(contentResolver, "Screenshot", uri))
+        setStatus("Screenshot copied \u2014 paste it into an app that takes images")
+    }
     private var transliterate = false
 
     /** Hinglish is Latin script, so it offers Devanagari as a suggestion instead. */
@@ -175,6 +275,7 @@ class AbodeInputMethodService : InputMethodService(),
     override fun onCreate() {
         super.onCreate()
         loadSpaceLabel()
+        loadClipImages()
         savedStateController.performRestore(null)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
 
@@ -481,6 +582,7 @@ class AbodeInputMethodService : InputMethodService(),
             KeyKind.DELETE, KeyKind.CLIPBOARD, KeyKind.AI, KeyKind.SPACER -> Unit
             // A section label in the clipboard panel: it draws and does nothing.
             KeyKind.CLIP_HEADER -> Unit
+            KeyKind.CLIP_IMAGE -> shareScreenshot(key.output)
         }
     }
 
@@ -774,6 +876,7 @@ class AbodeInputMethodService : InputMethodService(),
             clipboardMode -> KeyboardLayout.clipboard(
                 links = clipHistory.filter { isLink(it) },
                 texts = clipHistory.filterNot { isLink(it) },
+                images = clipImages.toList(),
             )
             numericMode -> KeyboardLayout.numeric()
             symbolsMode -> KeyboardLayout.symbols(symbolsPage)
@@ -838,11 +941,12 @@ class AbodeInputMethodService : InputMethodService(),
         }
 
         captureCurrentClip()
-        if (clipHistory.isEmpty()) {
+        if (clipHistory.isEmpty() && clipImages.isEmpty()) {
             setStatus("Nothing copied yet")
             return
         }
 
+        preloadThumbnails()
         clipboardMode = true
         toolbarMode = false
         numericMode = false
@@ -858,6 +962,13 @@ class AbodeInputMethodService : InputMethodService(),
         val manager = getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager ?: return
         val clip = manager.primaryClip ?: return
         if (clip.itemCount == 0) return
+
+        if (clip.description?.hasMimeType("image/*") == true) {
+            val uri = clip.getItemAt(0).uri ?: return
+            // Our own copy of a screenshot comes back through the clipboard: skip it.
+            if (uri.authority != CLIP_AUTHORITY) captureScreenshot(uri)
+            return
+        }
 
         val text = clip.getItemAt(0).coerceToText(this)?.toString()?.trim().orEmpty()
         if (text.isEmpty() || clipHistory.contains(text)) return
@@ -1514,6 +1625,12 @@ class AbodeInputMethodService : InputMethodService(),
 
     private companion object {
         const val MAX_CLIPS = 50
+
+        /** Screenshots kept on disk; the oldest are deleted past this. */
+        const val MAX_SHOTS = 20
+
+        /** Shared with the app being typed into, so the file is read through this authority. */
+        const val CLIP_AUTHORITY = "dev.abode.ime.clips"
         const val DOUBLE_TAP_MS = 320L
 
 

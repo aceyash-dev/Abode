@@ -345,10 +345,6 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
          * offers, on the keyboard where the cursor already is.
          */
         /**
-         * The tools panel. The top row is the text toolbar: the same five actions
-         * the system offers on a selection. Below it, the keyboard's own tools.
-         */
-        /**
          * The overflow row: one row of tools that sits above the keys.
          *
          * It is a row added to the current layout rather than a layout of its own,
@@ -380,6 +376,10 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
             return rows
         }
 
+        /**
+         * The tools panel. The top row is the text toolbar: the same five actions
+         * the system offers on a selection. Below it, the keyboard's own tools.
+         */
         fun editing(typedStyle: Int = 0): KeyboardLayout = KeyboardLayout(
             listOf(
                 listOf(
@@ -447,7 +447,7 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
          * inherits the touch handling, the theming and the height, and a clip is
          * committed by the same code path as a letter.
          */
-        fun clipboard(links: List<String>, texts: List<String>): KeyboardLayout {
+        fun clipboard(links: List<String>, texts: List<String>, images: List<String> = emptyList()): KeyboardLayout {
             val rows = mutableListOf<List<Key>>()
             // Links are a different kind of thing from a copied sentence: one is
             // pasted to be followed, the other to be quoted. Grouping them means
@@ -469,6 +469,12 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
                     if (it.length <= 34) it else it.take(33) + "\u2026"
                 }
                 rows += listOf(Key(preview, KeyKind.CHARACTER, output = entry))
+            }
+            if (images.isNotEmpty()) {
+                rows += listOf(Key("Screenshots", KeyKind.CLIP_HEADER, widthWeight = 1f))
+                images.take(MAX_CLIP_ROWS).forEach { path ->
+                    rows += listOf(Key("", KeyKind.CLIP_IMAGE, output = path, widthWeight = 1f))
+                }
             }
             rows += listOf(
                 Key("Back", KeyKind.CLIPBOARD, widthWeight = 1.6f),

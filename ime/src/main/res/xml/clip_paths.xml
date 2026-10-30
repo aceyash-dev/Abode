@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Screenshots the keyboard keeps. Shared with other apps through content URIs only. -->
+<paths>
+    <files-path name="clips" path="clips/" />
+</paths>

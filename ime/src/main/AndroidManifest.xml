@@ -5,6 +5,17 @@
 
     <application>
 
+        <!-- Screenshots taken from the clipboard, shared with the app being typed into. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="dev.abode.ime.clips"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/clip_paths" />
+        </provider>
+
         <service
             android:name="dev.abode.ime.AbodeInputMethodService"
             android:exported="true"

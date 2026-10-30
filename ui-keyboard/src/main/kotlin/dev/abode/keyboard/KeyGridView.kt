@@ -672,7 +672,7 @@ class KeyGridView @JvmOverloads constructor(
                 return
             }
 
-            if (key.kind == KeyKind.GIF_RESULT) {
+            if (key.kind == KeyKind.GIF_RESULT || key.kind == KeyKind.CLIP_IMAGE) {
                 drawGifCell(canvas, r, key)
                 return
             }

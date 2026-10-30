@@ -57,6 +57,9 @@ enum class KeyKind {
     /** A label row in the clipboard panel: "Links", "Text". Draws, does nothing. */
     CLIP_HEADER,
 
+    /** One screenshot in the clipboard panel. [Key.output] is its file path. */
+    CLIP_IMAGE,
+
     /** Opens and closes the selection group in the tool row. */
     EDIT_GROUP,
 
