@@ -42,9 +42,6 @@ enum class KeyKind {
     /** Selects the word before the cursor. */
     SELECT_WORD,
 
-    /** Cycles the key font: device, sans, serif, monospace. */
-    FONT_CYCLE,
-
     /** Opens the Chyme card. */
     CHYME,
 

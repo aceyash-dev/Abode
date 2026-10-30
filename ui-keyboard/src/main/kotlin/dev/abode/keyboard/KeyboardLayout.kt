@@ -2,6 +2,16 @@ package dev.abode.keyboard
 
 data class KeyboardLayout(val rows: List<List<Key>>) {
 
+    /** The same layout with the space bar's caption replaced. */
+    fun withSpaceLabel(label: String): KeyboardLayout =
+        if (label == "space") this else KeyboardLayout(
+            rows.map { row ->
+                row.map { key ->
+                    if (key.kind == KeyKind.SPACE && key.label == "space") key.copy(label = label) else key
+                }
+            },
+        )
+
     val rowCount: Int get() = rows.size
 
     companion object {
@@ -309,7 +319,7 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
          * The tools panel. The top row is the text toolbar: the same five actions
          * the system offers on a selection. Below it, the keyboard's own tools.
          */
-        fun editing(serifOn: Boolean = false, fontLabel: String = "Device"): KeyboardLayout = KeyboardLayout(
+        fun editing(typedStyle: Int = 0): KeyboardLayout = KeyboardLayout(
             listOf(
                 listOf(
                     Key("Select", KeyKind.SELECT_WORD, widthWeight = 1f),
@@ -326,8 +336,7 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
                 ),
                 listOf(
                     Key("Chyme", KeyKind.CHYME, widthWeight = 1f),
-                    Key("Serif", KeyKind.SERIF_TOGGLE, widthWeight = 1f, active = serifOn),
-                    Key("Font: $fontLabel", KeyKind.FONT_CYCLE, widthWeight = 1.2f),
+                    Key("Text: ${TYPED_STYLE_NAMES.getOrElse(typedStyle) { "Off" }}", KeyKind.SERIF_TOGGLE, widthWeight = 1.2f, active = typedStyle != 0),
                     Key("\u232B", KeyKind.DELETE, widthWeight = 1f),
                     Key("Done", KeyKind.EDIT, widthWeight = 1f),
                 ),
@@ -337,6 +346,9 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
                 ),
             ),
         )
+
+        /** Typed-text styles, in the order the Text key cycles through them. */
+        val TYPED_STYLE_NAMES = listOf("Off", "Serif", "Mono")
 
         /**
          * The numeric page: a calculator's worth of digits and the operators

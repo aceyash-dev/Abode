@@ -540,6 +540,36 @@ class KeyGridView @JvmOverloads constructor(
     }
 
     private val smileyPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    private val micPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val micRect = RectF()
+
+    /** The microphone from the design: a capsule, four bars, a cradle and a stand. */
+    private fun drawMic(canvas: Canvas, r: RectF) {
+        val scale = minOf(r.width(), r.height()) * 0.78f / 420f
+        val ox = r.centerX() - 360f * scale
+        val oy = r.centerY() - 360f * scale
+        fun x(v: Float) = ox + v * scale
+        fun y(v: Float) = oy + v * scale
+        micPaint.color = labelPaint.color
+        micPaint.style = Paint.Style.STROKE
+        micPaint.strokeWidth = 16f * scale
+        micPaint.strokeCap = Paint.Cap.ROUND
+        micRect.set(x(275f), y(150f), x(445f), y(430f))
+        canvas.drawRoundRect(micRect, 85f * scale, 85f * scale, micPaint)
+        for (line in listOf(230f, 270f, 310f, 350f)) {
+            canvas.drawLine(x(327f), y(line), x(393f), y(line), micPaint)
+        }
+        micRect.set(x(247f), y(230f), x(473f), y(456f))
+        canvas.drawArc(micRect, 0f, 180f, false, micPaint)
+        canvas.drawLine(x(247f), y(343f), x(247f), y(302f), micPaint)
+        canvas.drawLine(x(473f), y(343f), x(473f), y(302f), micPaint)
+        canvas.drawLine(x(360f), y(456f), x(360f), y(555f), micPaint)
+        canvas.drawLine(x(290f), y(562f), x(430f), y(562f), micPaint)
+        micPaint.style = Paint.Style.FILL
+        canvas.drawCircle(x(247f), y(302f), 9f * scale, micPaint)
+        canvas.drawCircle(x(473f), y(302f), 9f * scale, micPaint)
+    }
     private val smileyMouth = android.graphics.Path()
 
     private fun drawIcon(canvas: Canvas, rect: RectF, vector: ImageVector, kind: KeyKind) {
@@ -604,6 +634,10 @@ class KeyGridView @JvmOverloads constructor(
 
             // Return is drawn as its arrow, unless the field asked for a named action
             // (send, go, search): then the word is the thing the person needs to see.
+            if (keys[i].kind == KeyKind.VOICE) {
+                drawMic(canvas, r)
+                return
+            }
             val namedEnter = keys[i].kind == KeyKind.ENTER && keys[i].label != "return"
             val icon = if (namedEnter) null else iconFor(keys[i])
             if (icon != null) {
@@ -1038,11 +1072,18 @@ class KeyGridView @JvmOverloads constructor(
     }
 
     private fun indexAt(x: Float, y: Float): Int {
-        val inContent = scrollable && y >= contentTop && y <= contentBottom
-        val contentY = if (inContent) y + scrollOffset else y
-        fun testY(i: Int): Float = if (i >= headerKeyEnd && i < pinnedStartIndex) contentY else y
+        // On a scrolling grid the content keys live in scrolled coordinates and
+        // the header and footer keys live on screen. A touch is only compared
+        // against the keys in its own band, so a tap on a category tab can never
+        // land on an emoji that happens to sit at the same height in the content.
+        val inBand = scrollable && y >= contentTop && y <= contentBottom
+        fun isContent(i: Int) = i >= headerKeyEnd && i < pinnedStartIndex
+        fun pointY(i: Int) = if (scrollable && isContent(i)) y + scrollOffset else y
+        fun inSameBand(i: Int) = !scrollable || isContent(i) == inBand
+
         for (i in rects.indices) {
-            if (rects[i].contains(x, testY(i))) return i
+            if (!inSameBand(i)) continue
+            if (rects[i].contains(x, pointY(i))) return i
         }
         // The gaps between keys are narrow and fingers are not. A touch that
         // lands a few dp outside every rectangle used to type nothing at all,
@@ -1053,10 +1094,11 @@ class KeyGridView @JvmOverloads constructor(
         val reach = touchSlop.toFloat()
         for (i in rects.indices) {
             if (keys[i].kind == KeyKind.SPACER) continue
+            if (!inSameBand(i)) continue
             val r = rects[i]
-            val pointY = testY(i)
+            val py = pointY(i)
             val dx = maxOf(r.left - x, 0f, x - r.right)
-            val dy = maxOf(r.top - pointY, 0f, pointY - r.bottom)
+            val dy = maxOf(r.top - py, 0f, py - r.bottom)
             val distance = Math.hypot(dx.toDouble(), dy.toDouble()).toFloat()
             if (distance <= reach && distance < bestDistance) {
                 bestDistance = distance

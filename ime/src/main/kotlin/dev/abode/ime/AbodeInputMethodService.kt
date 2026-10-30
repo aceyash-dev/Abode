@@ -127,7 +127,8 @@ class AbodeInputMethodService : InputMethodService(),
     private var symbolsMode = false
     private var symbolsPage = 1
     private var emojiSearch = false
-    private var serifOutput = false
+    private var typedStyle = 0
+    private var spaceLabel = "space"
     private var emojiQuery = ""
 
     private var gifSearch = false
@@ -155,7 +156,7 @@ class AbodeInputMethodService : InputMethodService(),
 
     override fun onCreate() {
         super.onCreate()
-        loadKeyFont()
+        loadSpaceLabel()
         savedStateController.performRestore(null)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
 
@@ -401,7 +402,7 @@ class AbodeInputMethodService : InputMethodService(),
                     currentInputConnection?.setComposingText(latinBuffer, 1)
                     return
                 }
-                commit(if (serifOutput && !emojiMode) serifStyle(key.output) else key.output)
+                commit(if (typedStyle != 0 && !emojiMode) styledText(key.output, typedStyle) else key.output)
                 if (emojiMode) recordRecent(key.output)
                 if (shifted && !capsLock) setShift(false)
                 trackSentence(key.output)
@@ -438,10 +439,9 @@ class AbodeInputMethodService : InputMethodService(),
             KeyKind.SPEAK -> speakField()
             KeyKind.SEARCH_WEB -> searchWeb()
             KeyKind.SELECT_WORD -> selectWord()
-            KeyKind.FONT_CYCLE -> cycleKeyFont()
             KeyKind.CHYME -> toggleChyme()
             KeyKind.SERIF_TOGGLE -> {
-                serifOutput = !serifOutput
+                typedStyle = (typedStyle + 1) % KeyboardLayout.TYPED_STYLE_NAMES.size
                 applyLayout()
             }
             KeyKind.EMOJI -> toggleEmoji()
@@ -706,50 +706,12 @@ class AbodeInputMethodService : InputMethodService(),
     private fun applyTheme(theme: KeyboardTheme) {
         // The key font is the keyboard's own choice (set from the tools panel),
         // so it overrides whatever the theme says. Default: the device font.
-        val themed = theme.copy(fontFamily = keyFont)
+        val themed = theme
         currentTheme = themed
         if (::grid.isInitialized) grid.theme = themed
         if (::root.isInitialized) root.background = trayBackground(themed.background)
         if (::strip.isInitialized) strip.applyTheme(themed)
         if (::chymeCard.isInitialized) chymeCard.applyTheme(themed)
-    }
-
-    private val fontOrder = listOf(
-        KeyboardTheme.FONT_DEVICE,
-        KeyboardTheme.FONT_SANS,
-        KeyboardTheme.FONT_SERIF,
-        KeyboardTheme.FONT_MONO,
-    )
-
-    private var keyFont = KeyboardTheme.FONT_DEVICE
-
-    private fun fontName(family: String): String = when (family) {
-        KeyboardTheme.FONT_SANS -> "Sans"
-        KeyboardTheme.FONT_SERIF -> "Serif"
-        KeyboardTheme.FONT_MONO -> "Mono"
-        else -> "Device"
-    }
-
-    /** Next key font in the tools panel; remembered across restarts. */
-    private fun cycleKeyFont() {
-        val next = fontOrder[(fontOrder.indexOf(keyFont) + 1) % fontOrder.size]
-        keyFont = next
-        try {
-            getSharedPreferences("abode_keyboard", MODE_PRIVATE).edit().putString("key_font", next).apply()
-        } catch (e: Exception) {
-            AbodeLog.i("key font not saved: ${e.message}")
-        }
-        applyTheme(currentTheme)
-        applyLayout()
-    }
-
-    private fun loadKeyFont() {
-        keyFont = try {
-            getSharedPreferences("abode_keyboard", MODE_PRIVATE).getString("key_font", KeyboardTheme.FONT_DEVICE)
-                ?: KeyboardTheme.FONT_DEVICE
-        } catch (e: Exception) {
-            KeyboardTheme.FONT_DEVICE
-        }
     }
 
     /** Selects the word before the cursor, so Copy and Cut act on it. */
@@ -773,10 +735,10 @@ class AbodeInputMethodService : InputMethodService(),
         grid.pinnedTopRows = 1
         grid.pinnedRows = 2
         grid.visibleContentRows = 4
-        grid.keyboardLayout = when {
+        val base = when {
             gifSearch -> KeyboardLayout.qwerty(shifted = false, numberRow = true, capsLock = false, enterLabel = enterLabel())
             clipboardMode -> KeyboardLayout.clipboard(clipHistory.toList())
-            toolbarMode -> KeyboardLayout.editing(serifOn = serifOutput, fontLabel = fontName(keyFont))
+            toolbarMode -> KeyboardLayout.editing(typedStyle = typedStyle)
             numericMode -> KeyboardLayout.numeric()
             symbolsMode -> KeyboardLayout.symbols(symbolsPage)
             emojiMode -> KeyboardLayout.emojiScroll(emojiCategory, ::emojiRenders)
@@ -787,6 +749,7 @@ class AbodeInputMethodService : InputMethodService(),
                 enterLabel = enterLabel(),
             )
         }
+        grid.keyboardLayout = base.withSpaceLabel(spaceLabel)
     }
 
     private val glyphPaint = android.graphics.Paint()
@@ -1317,15 +1280,32 @@ class AbodeInputMethodService : InputMethodService(),
         setStatus("")
     }
 
-    /** Bold serif letters (U+1D400 block) for A-Z and a-z; everything else is unchanged. */
-    private fun serifStyle(text: String): String = buildString {
+    /**
+     * Letters and digits in a font the phone's text fields can show: bold serif
+     * or monospace, from Unicode's mathematical alphanumerics. Anything else is
+     * left alone.
+     */
+    private fun styledText(text: String, style: Int): String = buildString {
         for (c in text) {
-            val cp = when (c) {
-                in 'A'..'Z' -> 0x1D400 + (c - 'A')
-                in 'a'..'z' -> 0x1D41A + (c - 'a')
+            val cp = when {
+                style == 1 && c in 'A'..'Z' -> 0x1D400 + (c - 'A')
+                style == 1 && c in 'a'..'z' -> 0x1D41A + (c - 'a')
+                style == 1 && c in '0'..'9' -> 0x1D7CE + (c - '0')
+                style == 2 && c in 'A'..'Z' -> 0x1D670 + (c - 'A')
+                style == 2 && c in 'a'..'z' -> 0x1D68A + (c - 'a')
+                style == 2 && c in '0'..'9' -> 0x1D7F6 + (c - '0')
                 else -> c.code
             }
             appendCodePoint(cp)
+        }
+    }
+
+    private fun loadSpaceLabel() {
+        spaceLabel = try {
+            getSharedPreferences("abode_keyboard", MODE_PRIVATE)
+                .getString("space_label", "space")?.trim()?.take(12)?.ifEmpty { "space" } ?: "space"
+        } catch (e: Exception) {
+            "space"
         }
     }
 
