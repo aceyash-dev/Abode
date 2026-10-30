@@ -306,8 +306,8 @@ class AbodeInputMethodService : InputMethodService(),
             KeyKind.UNDO -> sendUndo()
             KeyKind.SPEAK -> speakField()
 
-            // TODO(M2/M4): clipboard panel and the AI sheet.
-            KeyKind.DELETE, KeyKind.CLIPBOARD, KeyKind.AI -> Unit
+            // TODO(M4): the AI sheet. The rest are handled elsewhere or are inert.
+            KeyKind.DELETE, KeyKind.CLIPBOARD, KeyKind.AI, KeyKind.SPACER -> Unit
         }
     }
 
