@@ -146,9 +146,10 @@ class AbodeInputMethodService : InputMethodService(),
      * looked at for a second and then closed, so nothing here is worth writing to
      * disk, and an LRU cap means a long session cannot grow it without bound.
      */
-    private val gifBitmaps = android.util.LruCache<String, android.graphics.Bitmap>(8 * 1024 * 1024) {
-        it.byteCount
-    }
+    private val gifBitmaps =
+        object : android.util.LruCache<String, android.graphics.Bitmap>(8 * 1024 * 1024) {
+            override fun sizeOf(key: String, value: android.graphics.Bitmap): Int = value.byteCount
+        }
     private var toolbarMode = false
     private var numericMode = false
     private var clipboardMode = false
