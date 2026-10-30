@@ -191,7 +191,6 @@ class AbodeInputMethodService : InputMethodService(),
                     override fun onKeyUp(key: Key) = this@AbodeInputMethodService.onKeyUp(key)
                     override fun onKeyRepeat(key: Key) = this@AbodeInputMethodService.onKeyDown(key)
                     override fun onGlide(keys: List<Key>) = this@AbodeInputMethodService.onGlide(keys)
-                    override fun onPage(step: Int) = this@AbodeInputMethodService.onEmojiPage(step)
                 }
             }
 
@@ -597,7 +596,6 @@ class AbodeInputMethodService : InputMethodService(),
 
     private fun applyLayout() {
         if (!::grid.isInitialized) return
-        grid.pagingEnabled = emojiMode && !emojiSearch
         grid.keyboardLayout = when {
             emojiSearch -> KeyboardLayout.qwerty(shifted = false, numberRow = true, capsLock = false, enterLabel = enterLabel())
             clipboardMode -> KeyboardLayout.clipboard(clipHistory.toList())
