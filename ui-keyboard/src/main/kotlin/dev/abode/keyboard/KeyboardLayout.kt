@@ -362,36 +362,31 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
          * so opening the tools does not throw away the suggestions above it — the
          * predictions stay, and the tools appear under them.
          */
-        fun toolsRow(typedStyle: Int = 0, groupOpen: Boolean = false): List<List<Key>> {
-            val rows = mutableListOf<List<Key>>()
-            rows += listOf(
-                Key(if (groupOpen) "Edit \u25B4" else "Edit \u25BE", KeyKind.EDIT_GROUP, widthWeight = 1.2f, active = groupOpen),
-                Key("Undo", KeyKind.UNDO, widthWeight = 1f),
-                Key("Speak", KeyKind.SPEAK, widthWeight = 1f),
-                Key("Google", KeyKind.SEARCH_WEB, widthWeight = 1.1f),
-                Key("Clip", KeyKind.CLIPBOARD, widthWeight = 1f),
-                Key("Chyme", KeyKind.CHYME, widthWeight = 1.1f),
-                Key("App", KeyKind.APP, widthWeight = 1f),
-                Key("Text: ${TYPED_STYLE_NAMES.getOrElse(typedStyle) { "Off" }}", KeyKind.SERIF_TOGGLE, widthWeight = 1.3f, active = typedStyle != 0),
-                Key("Done", KeyKind.EDIT, widthWeight = 1f),
-            )
+        fun toolsRow(typedStyle: Int = 0, groupOpen: Boolean = false): List<Key> =
             if (groupOpen) {
-                // The four selection actions, behind one key until asked for.
-                rows += listOf(
+                // The group replaces the row rather than adding to it: the overlay
+                // is one row tall, and a row that grows sideways until the labels
+                // are unreadable is not a group.
+                listOf(
                     Key("Select", KeyKind.SELECT_WORD, widthWeight = 1f),
                     Key("Select all", KeyKind.SELECT_ALL, widthWeight = 1.2f),
                     Key("Copy", KeyKind.COPY, widthWeight = 1f),
                     Key("Cut", KeyKind.CUT, widthWeight = 1f),
                     Key("Paste", KeyKind.PASTE, widthWeight = 1f),
+                    Key("Done", KeyKind.EDIT_GROUP, widthWeight = 1f, active = true),
+                )
+            } else {
+                listOf(
+                    Key("Edit \u25BE", KeyKind.EDIT_GROUP, widthWeight = 1.2f),
+                    Key("Undo", KeyKind.UNDO, widthWeight = 1f),
+                    Key("Speak", KeyKind.SPEAK, widthWeight = 1f),
+                    Key("Google", KeyKind.SEARCH_WEB, widthWeight = 1.1f),
+                    Key("Clip", KeyKind.CLIPBOARD, widthWeight = 1f),
+                    Key("Chyme", KeyKind.CHYME, widthWeight = 1.1f),
+                    Key("App", KeyKind.APP, widthWeight = 1f),
                 )
             }
-            return rows
-        }
 
-        /**
-         * The tools panel. The top row is the text toolbar: the same five actions
-         * the system offers on a selection. Below it, the keyboard's own tools.
-         */
         fun editing(typedStyle: Int = 0): KeyboardLayout = KeyboardLayout(
             listOf(
                 listOf(

@@ -165,6 +165,30 @@ class KeyGridView @JvmOverloads constructor(
      */
     var imageFor: ((String) -> android.graphics.Bitmap?)? = null
 
+    /**
+     * A tool row drawn over the top of the keys.
+     *
+     * It is an overlay rather than a row in the layout because adding a row
+     * changes the height of the keyboard, and a keyboard that jumps every time the
+     * tools open is worse than one without tools. The row floats above the keys
+     * with its own backing, so it reads as something laid on top.
+     */
+    var toolOverlay: List<Key> = emptyList()
+        set(value) {
+            if (field == value) return
+            field = value
+            overlayPressed = -1
+            rebuildOverlay()
+            invalidate()
+        }
+
+    private val overlayRects = ArrayList<RectF>(8)
+    private var overlayPressed = -1
+    private val overlayPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val overlayBackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private var overlayTop = 0f
+    private var overlayBottom = 0f
+
     var keyboardLayout: KeyboardLayout = KeyboardLayout.qwerty()
         set(value) {
             if (field === value) return
@@ -300,6 +324,10 @@ class KeyGridView @JvmOverloads constructor(
         secondaryPaint.color = (theme.keyLabel and 0x00FFFFFF) or (0xAA shl 24)
         hintPaint.color = (theme.keyLabel and 0x00FFFFFF) or (0x55 shl 24)
         scrollbarPaint.color = (theme.keyLabel and 0x00FFFFFF) or (0xFF shl 24)
+        overlayPaint.color = theme.keyBackground
+        // The backing is the tray colour, nearly opaque, so the keys behind read
+        // as behind rather than as part of the row.
+        overlayBackPaint.color = (theme.background and 0x00FFFFFF) or (0xF0 shl 24)
         iconPaint.color = theme.keyLabel
         iconCache.clear()
         labelPaint.typeface = ThemeTypeface.forTheme(theme.fontPath, theme.fontFamily)
@@ -343,12 +371,33 @@ class KeyGridView @JvmOverloads constructor(
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         rebuildGeometry()
+        rebuildOverlay()
     }
 
     override fun onDetachedFromWindow() {
         handler.removeCallbacks(longPress)
         cancelRepeat()
         super.onDetachedFromWindow()
+    }
+
+    private fun rebuildOverlay() {
+        overlayRects.clear()
+        overlayTop = 0f
+        overlayBottom = 0f
+        if (toolOverlay.isEmpty() || width == 0) return
+        val h = (rowHeight * 0.86f).coerceAtLeast(28f * density)
+        overlayTop = gap
+        overlayBottom = overlayTop + h
+        var totalWeight = 0f
+        for (key in toolOverlay) totalWeight += key.widthWeight
+        if (totalWeight <= 0f) return
+        val available = width - gap * (toolOverlay.size + 1)
+        var left = gap
+        for (key in toolOverlay) {
+            val keyWidth = available * (key.widthWeight / totalWeight)
+            overlayRects.add(RectF(left, overlayTop, left + keyWidth, overlayBottom))
+            left += keyWidth + gap
+        }
     }
 
     private fun rebuildGeometry() {
@@ -647,6 +696,8 @@ class KeyGridView @JvmOverloads constructor(
             if (scrollbarAlpha > 0f) postInvalidateOnAnimation()
         }
 
+        if (overlayRects.isNotEmpty()) drawToolOverlay(canvas)
+
         if (gliding) {
             // Two strokes: a wide soft one under a thin bright one, so the trail
             // reads over both a light and a dark theme without a second colour.
@@ -654,6 +705,26 @@ class KeyGridView @JvmOverloads constructor(
             canvas.drawPath(glideTrail, trailPaint)
         }
         if (popupKeys.isNotEmpty()) drawPopup(canvas)
+    }
+
+    private fun drawToolOverlay(canvas: Canvas) {
+        // A soft backing under the row, so the keys behind it are visibly behind.
+        canvas.drawRoundRect(
+            RectF(gap / 2f, overlayTop - gap / 2f, width - gap / 2f, overlayBottom + gap / 2f),
+            corner,
+            corner,
+            overlayBackPaint,
+        )
+        for (i in overlayRects.indices) {
+            val r = overlayRects[i]
+            val fill = if (i == overlayPressed) pressedPaint else overlayPaint
+            canvas.drawRoundRect(r, corner, corner, fill)
+            val key = toolOverlay[i]
+            if (key.label.isEmpty()) continue
+            val paint = fitted(labelPaint, key.label, r.width() - 6f * density)
+            val baseline = r.centerY() - (paint.descent() + paint.ascent()) / 2f
+            canvas.drawText(key.label, r.centerX(), baseline, paint)
+        }
     }
 
     private fun drawKey(canvas: Canvas, i: Int) {
@@ -784,6 +855,14 @@ class KeyGridView @JvmOverloads constructor(
                 velocityTracker?.recycle()
                 velocityTracker = android.view.VelocityTracker.obtain().apply { addMovement(event) }
 
+                val overlay = overlayAt(event.x, event.y)
+                if (overlay >= 0) {
+                    overlayPressed = overlay
+                    if (theme.haptics) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    invalidate()
+                    return true
+                }
+
                 setPressedKey(indexAt(event.x, event.y))
                 if (pressedIndex >= 0) {
                     val key = keys[pressedIndex]
@@ -888,6 +967,14 @@ class KeyGridView @JvmOverloads constructor(
                 handler.removeCallbacks(longPress)
                 cancelRepeat()
 
+                if (overlayPressed >= 0) {
+                    val index = overlayPressed
+                    overlayPressed = -1
+                    invalidate()
+                    toolOverlay.getOrNull(index)?.let { listener?.onKeyUp(it) }
+                    return true
+                }
+
                 if (scrolling) {
                     scrolling = false
                     velocityTracker?.let { tracker ->
@@ -969,6 +1056,7 @@ class KeyGridView @JvmOverloads constructor(
             MotionEvent.ACTION_CANCEL -> {
                 handler.removeCallbacks(longPress)
                 cancelRepeat()
+                overlayPressed = -1
                 scrolling = false
                 velocityTracker?.recycle()
                 velocityTracker = null
@@ -1105,6 +1193,13 @@ class KeyGridView @JvmOverloads constructor(
         }
         val last = glidePoints.last()
         glideTrail.lineTo(last[0], last[1])
+    }
+
+    /** The overlay key under a point, or -1. */
+    private fun overlayAt(x: Float, y: Float): Int {
+        if (overlayRects.isEmpty() || y < overlayTop || y > overlayBottom) return -1
+        for (i in overlayRects.indices) if (overlayRects[i].contains(x, y)) return i
+        return -1
     }
 
     private fun indexAt(x: Float, y: Float): Int {

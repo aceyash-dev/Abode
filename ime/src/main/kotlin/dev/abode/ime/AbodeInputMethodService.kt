@@ -912,15 +912,15 @@ class AbodeInputMethodService : InputMethodService(),
                 enterLabel = enterLabel(),
             )
         }
-        // The tool row is prepended to whatever is showing, so the suggestions
-        // above the keys survive it: opening the tools used to replace the whole
-        // keyboard, predictions included.
-        val withTools = if (toolbarMode) {
-            base.copy(rows = KeyboardLayout.toolsRow(typedStyle, editGroupOpen) + base.rows)
+        // The tools float over the keys rather than joining the layout: a row in
+        // the layout would change the keyboard's height, and the keyboard jumping
+        // every time the tools open is worse than no tools at all.
+        grid.toolOverlay = if (toolbarMode) {
+            KeyboardLayout.toolsRow(typedStyle, editGroupOpen)
         } else {
-            base
+            emptyList()
         }
-        grid.keyboardLayout = withTools.withSpaceLabel(spaceLabel)
+        grid.keyboardLayout = base.withSpaceLabel(spaceLabel)
     }
 
     private val glyphPaint = android.graphics.Paint()
