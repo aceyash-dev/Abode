@@ -183,8 +183,10 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
             )
 
             if (bottomStrip) {
+                // No globe: language is chosen in the app, and a key that changes
+                // the script mid-sentence was the thing people hit by accident.
                 rows += listOf(
-                    Key("\uD83C\uDF10", KeyKind.GLOBE, widthWeight = 1f),
+                    Key("", KeyKind.SPACER, widthWeight = 1f),
                     Key("", KeyKind.SPACER, widthWeight = 4f),
                     Key("", KeyKind.VOICE, widthWeight = 1f),
                 )
@@ -523,9 +525,8 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
                     listOf(
                         Key("ABC", KeyKind.SYMBOLS, widthWeight = 1.2f),
                         Key("123", KeyKind.NUMERIC, widthWeight = 1.2f),
-                        Key("🌐", KeyKind.GLOBE, widthWeight = 1.1f),
                         Key("☺", KeyKind.EMOJI, widthWeight = 1.1f),
-                        Key("space", KeyKind.SPACE, output = " ", widthWeight = 3.4f),
+                        Key("space", KeyKind.SPACE, output = " ", widthWeight = 4.5f),
                         Key("🎤", KeyKind.VOICE, widthWeight = 1.2f),
                         Key("return", KeyKind.ENTER, widthWeight = 1.9f),
                     ),

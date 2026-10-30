@@ -258,9 +258,13 @@ class SuggestionStrip @JvmOverloads constructor(
         val startX = (width - cancelWidth) / 2f - total / 2f
         val midY = height / 2f
         val maxHeight = height * 0.7f
+        // Microphone levels sit low in their range: a quiet room is 0.02 and speech
+        // peaks near 0.3, so a linear bar barely left the floor. The square root
+        // lifts the quiet end without clipping the loud one.
+        val eased = Math.pow(displayLevel.toDouble().coerceIn(0.0, 1.0), 0.45).toFloat()
         for (i in 0 until bars) {
             val shape = 0.45f + 0.55f * Math.abs(Math.sin((animPhase + i * 0.9).toDouble())).toFloat()
-            val h = (maxHeight * displayLevel * shape).coerceAtLeast(4f * density)
+            val h = (maxHeight * eased * shape).coerceAtLeast(3f * density)
             val x = startX + i * (barWidth + spacing)
             vizRect.set(x, midY - h / 2f, x + barWidth, midY + h / 2f)
             canvas.drawRoundRect(vizRect, barWidth / 2f, barWidth / 2f, accentPaint)
@@ -339,7 +343,7 @@ class SuggestionStrip @JvmOverloads constructor(
             val r = buttonRectAt(i)
             val fill = if (pressedButton == i) pressedPaint else slotPaint
             canvas.drawRoundRect(r, corner, corner, fill)
-            if (kindAt(i) == BUTTON_TOOLBAR) drawGridIcon(canvas, r) else drawSparkle(canvas, r)
+            if (kindAt(i) == BUTTON_TOOLBAR) drawGridIcon(canvas, r) else drawChymeMark(canvas, r)
         }
     }
 
@@ -356,28 +360,34 @@ class SuggestionStrip @JvmOverloads constructor(
     }
 
     /**
-     * A four-point star for the Chyme button.
+     * The Chyme mark: a thin ring around a shell of curved strokes.
      *
-     * Drawn rather than taken from the icon set: it is four curves, and a
-     * vector icon here would be the only dependency in the strip's draw path
-     * that can be renamed out from under a build.
+     * Drawn rather than shipped as a bitmap so it takes the theme's label colour
+     * like every other icon on the strip, and stays sharp at any density.
      */
-    private fun drawSparkle(canvas: Canvas, r: RectF) {
-        val s = minOf(r.height() * 0.26f, r.width() * 0.30f)
-        if (s <= 0f) return
+    private fun drawChymeMark(canvas: Canvas, r: RectF) {
+        val size = minOf(r.height() * 0.30f, r.width() * 0.32f)
+        if (size <= 0f) return
         val cx = r.centerX()
         val cy = r.centerY()
-        val waist = s * 0.22f
-        val path = Path().apply {
-            moveTo(cx, cy - s)
-            quadTo(cx + waist, cy - waist, cx + s, cy)
-            quadTo(cx + waist, cy + waist, cx, cy + s)
-            quadTo(cx - waist, cy + waist, cx - s, cy)
-            quadTo(cx - waist, cy - waist, cx, cy - s)
-            close()
+        iconPaint.style = Paint.Style.STROKE
+        iconPaint.strokeCap = Paint.Cap.ROUND
+
+        // The ring.
+        iconPaint.strokeWidth = (size * 0.06f).coerceAtLeast(1f)
+        canvas.drawCircle(cx, cy, size, iconPaint)
+
+        // The shell: strokes that leave the left rim and curl toward the top right,
+        // shorter as they get closer to the middle.
+        iconPaint.strokeWidth = (size * 0.11f).coerceAtLeast(1f)
+        val box = RectF()
+        for (i in 0 until 7) {
+            val t = i / 6f
+            val radius = size * (0.26f + 0.66f * t)
+            box.set(cx - radius, cy - radius, cx + radius, cy + radius)
+            canvas.drawArc(box, -156f + 14f * t, 168f - 46f * t, false, iconPaint)
         }
-        iconPaint.style = Paint.Style.FILL
-        canvas.drawPath(path, iconPaint)
+        iconPaint.strokeCap = Paint.Cap.BUTT
     }
 
     private fun ellipsise(text: String, maxWidth: Float): String {

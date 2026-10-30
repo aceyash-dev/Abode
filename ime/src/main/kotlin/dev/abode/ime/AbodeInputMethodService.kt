@@ -1295,7 +1295,10 @@ class AbodeInputMethodService : InputMethodService(),
         }
         chymeCard.showWorking(action)
         scope.launch {
-            runCatching { ChymeClient.complete(config, ChymePrompts.forAction(action, text)) }
+            val language = java.util.Locale.getDefault()
+                .getDisplayLanguage(java.util.Locale.ENGLISH)
+                .ifBlank { "English" }
+            runCatching { ChymeClient.complete(config, ChymePrompts.forAction(action, text, language)) }
                 .onSuccess { chymeCard.showResult(it) }
                 .onFailure { chymeCard.showError(it.message ?: "Request failed") }
         }

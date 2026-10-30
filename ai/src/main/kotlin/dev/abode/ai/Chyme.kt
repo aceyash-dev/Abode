@@ -121,7 +121,12 @@ class ChymeStore(context: Context) {
  */
 object ChymePrompts {
 
-    fun forAction(action: AiAction, text: String): String = when (action) {
+    /**
+     * [language] is the name of the language to translate into — the device's own,
+     * supplied by the caller. Translating to a fixed pair meant a Hindi phone got
+     * English back and an English phone got Hindi.
+     */
+    fun forAction(action: AiAction, text: String, language: String = "English"): String = when (action) {
         AiAction.REWRITE_FORMAL ->
             "Rewrite the text below in a more formal register, keeping its meaning. " +
                 "Return only the rewritten text.\n\n$text"
@@ -139,8 +144,8 @@ object ChymePrompts {
                 "nothing else. Return only the corrected text.\n\n$text"
 
         AiAction.TRANSLATE ->
-            "Translate the text below. If it is in English, translate it into Hindi; " +
-                "otherwise translate it into English. Return only the translation.\n\n$text"
+            "Translate the text below into $language. If it is already in $language, " +
+                "leave it as it is. Return only the translation.\n\n$text"
 
         AiAction.REPLY ->
             "Write a short, natural reply to the message below. Return only the " +
