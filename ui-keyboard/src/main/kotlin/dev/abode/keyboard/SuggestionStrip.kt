@@ -8,8 +8,6 @@ import android.graphics.Typeface
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
-import compose.icons.TablerIcons
-import compose.icons.tablericons.LayoutGrid
 import dev.abode.core.common.theme.KeyboardTheme
 
 /**
@@ -33,24 +31,7 @@ class SuggestionStrip @JvmOverloads constructor(
     interface Listener {
         /** A slot was tapped. [index] is 0, 1 or 2. */
         fun onSuggestion(index: Int)
-
-        /** The toolbar button at the left of the strip was tapped. */
-        fun onToolbar() {}
     }
-
-    /** Shows the toolbar button at the left edge; the slots move right to make room. */
-    var toolbarButton = false
-        set(value) {
-            if (field == value) return
-            field = value
-            buildSlots()
-            invalidate()
-        }
-    private var toolbarPressed = false
-    private val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val toolbarRect = RectF()
-    private var toolbarRendered: VectorPaths.Rendered? = null
-    private val leftInset: Float get() = if (toolbarButton) 44f * density else 0f
 
     var listener: Listener? = null
 
@@ -104,8 +85,6 @@ class SuggestionStrip @JvmOverloads constructor(
         // Dividers are the label colour at a low opacity, so they read on any theme.
         dividerPaint.color = (theme.keyLabel and 0x00FFFFFF) or (0x66 shl 24)
         labelPaint.color = theme.keyLabel
-        iconPaint.color = theme.keyLabel
-        toolbarRendered = null
         gap = theme.keyGapDp * density
         slotHeight = (theme.rowHeightDp * 0.7f) * density
         corner = theme.cornerRadiusDp * density
@@ -126,7 +105,7 @@ class SuggestionStrip @JvmOverloads constructor(
         val items = labels()
         if (items.isEmpty() || width == 0) return
         val count = items.size.coerceAtMost(3)
-        val available = width - sidePadding * 2 - leftInset - gap * (count - 1)
+        val available = width - sidePadding * 2 - gap * (count - 1)
         if (available <= 0f) return
 
         // Slots are equal width rather than weighted by their text: a strip whose
@@ -134,7 +113,7 @@ class SuggestionStrip @JvmOverloads constructor(
         val slotWidth = available / count
         val top = (height - slotHeight) / 2f
         for (i in 0 until count) {
-            val left = sidePadding + leftInset + i * (slotWidth + gap)
+            val left = sidePadding + i * (slotWidth + gap)
             slots.add(RectF(left, top, left + slotWidth, top + slotHeight))
         }
     }
@@ -155,7 +134,6 @@ class SuggestionStrip @JvmOverloads constructor(
         val items = labels()
         // The first suggestion is the one the keyboard expects you to want, so it
         // takes the accent. That is the cue that tapping it is the quick choice.
-        if (toolbarButton) drawToolbarButton(canvas)
         val highlightFirst = suggestions.isNotEmpty()
         for (i in slots.indices) {
             val r = slots[i]
@@ -178,23 +156,6 @@ class SuggestionStrip @JvmOverloads constructor(
         }
     }
 
-    private fun drawToolbarButton(canvas: Canvas) {
-        val size = 20f * density
-        val cx = leftInset / 2f
-        val cy = height / 2f
-        toolbarRect.set(cx - size, cy - size, cx + size, cy + size)
-        val fill = if (toolbarPressed) pressedPaint else slotPaint
-        canvas.drawRoundRect(toolbarRect, corner, corner, fill)
-        val rendered = toolbarRendered ?: VectorPaths.render(TablerIcons.LayoutGrid, size * 1.1f)
-            .also { toolbarRendered = it }
-        canvas.save()
-        canvas.translate(cx - size * 0.55f, cy - size * 0.55f)
-        iconPaint.style = if (rendered.filled) Paint.Style.FILL else Paint.Style.STROKE
-        iconPaint.strokeWidth = rendered.strokeWidth
-        canvas.drawPath(rendered.path, iconPaint)
-        canvas.restore()
-    }
-
     private fun ellipsise(text: String, maxWidth: Float): String {
         if (labelPaint.measureText(text) <= maxWidth) return text
         var cut = text.length
@@ -205,11 +166,6 @@ class SuggestionStrip @JvmOverloads constructor(
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                if (toolbarButton && event.x < leftInset) {
-                    toolbarPressed = true
-                    invalidate()
-                    return true
-                }
                 pressed = slotAt(event.x, event.y)
                 if (pressed < 0) return false
                 invalidate()
@@ -226,13 +182,6 @@ class SuggestionStrip @JvmOverloads constructor(
             }
 
             MotionEvent.ACTION_UP -> {
-                if (toolbarPressed) {
-                    toolbarPressed = false
-                    invalidate()
-                    listener?.onToolbar()
-                    performClick()
-                    return true
-                }
                 val hit = slotAt(event.x, event.y)
                 pressed = -1
                 invalidate()

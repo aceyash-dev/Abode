@@ -179,10 +179,8 @@ class AbodeInputMethodService : InputMethodService(),
 
         if (!::root.isInitialized) {
             strip = SuggestionStrip(this).apply {
-                toolbarButton = true
                 listener = object : SuggestionStrip.Listener {
                     override fun onSuggestion(index: Int) = onStripTapped(index)
-                    override fun onToolbar() = toggleToolbar()
                 }
             }
 
