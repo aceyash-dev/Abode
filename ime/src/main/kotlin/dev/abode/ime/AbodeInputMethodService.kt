@@ -3,6 +3,7 @@ package dev.abode.ime
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.inputmethodservice.InputMethodService
 import android.os.SystemClock
 import android.text.InputType
@@ -30,6 +31,7 @@ import dev.abode.ai.ChymeStore
 import dev.abode.core.common.AbodeDispatchers
 import dev.abode.core.common.AbodeLog
 import dev.abode.core.common.theme.KeyboardTheme
+import dev.abode.data.SystemTheme
 import dev.abode.data.ThemePreferences
 import dev.abode.keyboard.EmojiCatalog
 import dev.abode.keyboard.EmojiPalette
@@ -104,6 +106,9 @@ class AbodeInputMethodService : InputMethodService(),
     private lateinit var strip: SuggestionStrip
     private lateinit var chymeCard: ChymeCard
     private var chymeOpen = false
+
+    /** The theme as stored, before the system's night mode and wallpaper are applied. */
+    private var storedTheme: KeyboardTheme? = null
     private val chymeStore by lazy { ChymeStore(this) }
 
     private var glideDecoder: GlideDecoder? = null
@@ -176,7 +181,10 @@ class AbodeInputMethodService : InputMethodService(),
         scope.launch { voice.events.collect(::onVoiceEvent) }
 
         scope.launch {
-            themePreferences.theme.collect { theme -> applyTheme(theme) }
+            themePreferences.theme.collect { theme ->
+                storedTheme = theme
+                applyTheme(SystemTheme.resolve(this@AbodeInputMethodService, theme))
+            }
         }
     }
 
@@ -200,7 +208,6 @@ class AbodeInputMethodService : InputMethodService(),
                     override fun onSuggestion(index: Int) = onStripTapped(index)
                     override fun onToolbar() = toggleToolbar()
                     override fun onChyme() = toggleChyme()
-                    override fun onCancelVoice() = cancelListening()
                 }
             }
 
@@ -313,6 +320,14 @@ class AbodeInputMethodService : InputMethodService(),
         stopListening()
     }
 
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // Night mode can flip while the keyboard is up. Re-resolving here means the
+        // keyboard follows the system immediately, instead of on the next show or
+        // the next preference change.
+        storedTheme?.let { applyTheme(SystemTheme.resolve(this, it)) }
+    }
+
     override fun onEvaluateFullscreenMode(): Boolean = false
 
     override fun onDestroy() {
@@ -390,7 +405,6 @@ class AbodeInputMethodService : InputMethodService(),
             KeyKind.PASTE -> contextAction(android.R.id.paste)
             KeyKind.UNDO -> sendUndo()
             KeyKind.SPEAK -> speakField()
-            KeyKind.SEARCH_WEB -> searchWeb()
             KeyKind.EMOJI -> toggleEmoji()
             KeyKind.EMOJI_TAB -> selectEmojiCategory(key.output.toIntOrNull() ?: 0)
             KeyKind.EMOJI_MORE -> nextEmojiPage()
@@ -679,7 +693,8 @@ class AbodeInputMethodService : InputMethodService(),
      * Whether the system font can draw [emoji] as one glyph. Checked once per
      * string: a sequence the font lacks falls back to boxes, so it is hidden.
      */
-    private fun emojiRenders(emoji: String): Boolean = true
+    private fun emojiRenders(emoji: String): Boolean =
+        glyphCache.getOrPut(emoji) { glyphPaint.hasGlyph(emoji) }
 
     /**
      * The return key says what pressing it will do. A field that wants a search
@@ -1090,7 +1105,6 @@ class AbodeInputMethodService : InputMethodService(),
             return
         }
         listening = true
-        strip.visualizer = true
         setStatus("Listening\u2026")
         engine.start(Locale.getDefault())
     }
@@ -1108,53 +1122,13 @@ class AbodeInputMethodService : InputMethodService(),
         }
     }
 
-    /** Stops dictation and throws away what was heard, without committing it. */
-    private fun cancelListening() {
-        if (!listening) return
-        listening = false
-        voiceEngine?.cancel()
-        currentInputConnection?.let {
-            it.setComposingText("", 1)
-            it.finishComposingText()
-        }
-        strip.visualizer = false
-        setStatus("")
-    }
-
-    /** Opens a Google search for the selected text, or the word before the cursor. */
-    private fun searchWeb() {
-        if (isSensitiveField()) {
-            setStatus("Search is off in password fields")
-            return
-        }
-        val ic = currentInputConnection ?: return
-        val selected = ic.getSelectedText(0)?.toString().orEmpty().trim()
-        val before = ic.getTextBeforeCursor(60, 0)?.toString().orEmpty()
-        val query = selected.ifEmpty { before.trim().split(' ').lastOrNull().orEmpty() }
-        if (query.isEmpty()) {
-            setStatus("Nothing to search")
-            return
-        }
-        val uri = android.net.Uri.parse("https://www.google.com/search?q=" + android.net.Uri.encode(query))
-        try {
-            startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        } catch (e: Exception) {
-            setStatus("No browser to search with")
-        }
-    }
-
     private fun stopListening() {
         if (!listening) return
         listening = false
-        strip.visualizer = false
         voiceEngine?.stop()
     }
 
     private fun onVoiceEvent(event: VoiceEvent) {
-        if (event is VoiceEvent.Level) {
-            strip.level = event.value
-            return
-        }
         val ic = currentInputConnection ?: return
         when (event) {
             // Partials go into the composing region so the user watches the
@@ -1166,25 +1140,21 @@ class AbodeInputMethodService : InputMethodService(),
                 if (event.text.isNotEmpty()) ic.commitText(event.text, 1)
                 ic.finishComposingText()
                 listening = false
-                strip.visualizer = false
                 setStatus("")
             }
 
             is VoiceEvent.PermissionRequired -> {
                 listening = false
-                strip.visualizer = false
                 setStatus("Microphone permission needed")
                 requestMicrophonePermission()
             }
 
             is VoiceEvent.Failed -> {
                 listening = false
-                strip.visualizer = false
                 setStatus(event.message)
                 AbodeLog.w("voice failed: ${event.code} ${event.message}")
             }
 
-            is VoiceEvent.Level -> Unit
             VoiceEvent.Ready -> {
                 setStatus("Listening\u2026")
                 AbodeLog.d("voice ready")

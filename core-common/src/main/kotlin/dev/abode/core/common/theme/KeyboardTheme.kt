@@ -53,6 +53,10 @@ data class KeyboardTheme(
     val seedColor: Int = 0xFF0A84FF.toInt(),
     /** Dark keyboard (light keys on a dark tray) or light. Drives [fromSeed]. */
     val isDark: Boolean = true,
+    /** Follow the system's night mode instead of [isDark]. Resolved at draw time. */
+    val followSystemDark: Boolean = false,
+    /** Take the accent from the wallpaper on Android 12+. Resolved at draw time. */
+    val dynamicColor: Boolean = false,
 ) {
     companion object {
 

@@ -46,6 +46,8 @@ class ThemePreferences(private val context: Context) {
             doubleSpacePeriod = prefs[KEY_DOUBLE_SPACE] ?: defaults.doubleSpacePeriod,
             seedColor = prefs[KEY_SEED] ?: defaults.seedColor,
             isDark = prefs[KEY_DARK] ?: defaults.isDark,
+            followSystemDark = prefs[KEY_FOLLOW_SYSTEM] ?: defaults.followSystemDark,
+            dynamicColor = prefs[KEY_DYNAMIC] ?: defaults.dynamicColor,
             keyShape = prefs[KEY_SHAPE]?.let { value ->
                 KeyShape.entries.firstOrNull { it.name == value }
             } ?: defaults.keyShape,
@@ -74,6 +76,8 @@ class ThemePreferences(private val context: Context) {
             prefs[KEY_DOUBLE_SPACE] = theme.doubleSpacePeriod
             prefs[KEY_SEED] = theme.seedColor
             prefs[KEY_DARK] = theme.isDark
+            prefs[KEY_FOLLOW_SYSTEM] = theme.followSystemDark
+            prefs[KEY_DYNAMIC] = theme.dynamicColor
         }
     }
 
@@ -98,6 +102,8 @@ class ThemePreferences(private val context: Context) {
         val KEY_DOUBLE_SPACE = booleanPreferencesKey("double_space_period")
         val KEY_SEED = intPreferencesKey("seed_color")
         val KEY_DARK = booleanPreferencesKey("is_dark")
+        val KEY_FOLLOW_SYSTEM = booleanPreferencesKey("follow_system_dark")
+        val KEY_DYNAMIC = booleanPreferencesKey("dynamic_color")
     }
 }
 

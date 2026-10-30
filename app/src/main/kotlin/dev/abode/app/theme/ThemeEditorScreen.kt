@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.abode.core.common.theme.KeyShape
 import dev.abode.core.common.theme.KeyboardTheme
+import dev.abode.data.SystemTheme
 import dev.abode.core.common.theme.ThemePresets
 import dev.abode.data.ThemePreferences
 import java.io.File
@@ -129,7 +130,9 @@ fun ThemeEditorScreen(onBack: () -> Unit) {
             modifier = Modifier.fillMaxWidth(),
         )
 
-        ThemePreview(theme)
+        // Resolved the same way the keyboard resolves it, so the two switches
+        // above show their effect in the sample rather than only on the keys.
+        ThemePreview(SystemTheme.resolve(context, theme))
 
         // Chips show which choice is live. An unmarked chip reads as "not chosen"
         // to nobody, and people keep tapping a preset to see whether it changed.
@@ -208,8 +211,14 @@ fun ThemeEditorScreen(onBack: () -> Unit) {
             }
         }
 
+        ToggleRow("Follow system dark mode", theme.followSystemDark) {
+            update(theme.copy(followSystemDark = it))
+        }
         ToggleRow("Dark keyboard", theme.isDark) { dark ->
             update(KeyboardTheme.fromSeed(theme.seedColor, dark, theme))
+        }
+        ToggleRow("Wallpaper colour (Android 12+)", theme.dynamicColor) {
+            update(theme.copy(dynamicColor = it))
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
