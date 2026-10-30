@@ -37,3 +37,41 @@ jobs:
           name: app-debug
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: warn
+
+      # The upload key comes from repository secrets, never from the repo. If the
+      # secrets are not set, this step does nothing and the release build is skipped,
+      # so the debug build keeps working for everyone else.
+      - name: Decode release keystore
+        id: release_key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KEYSTORE_B64:-}" ] || [ -z "${STORE_PASSWORD:-}" ] || [ -z "${KEY_ALIAS:-}" ] || [ -z "${KEY_PASSWORD:-}" ]; then
+            echo "Release signing secrets not set; skipping the release build."
+            echo "release_ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "$KEYSTORE_B64" | base64 --decode > keystore/abode-release.jks
+          {
+            echo "storeFile=keystore/abode-release.jks"
+            echo "storePassword=$STORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > keystore.properties
+          echo "release_ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Assemble release APK
+        if: steps.release_key.outputs.release_ready == 'true'
+        run: gradle :app:assembleRelease -PgitSha=${{ github.sha }} --stacktrace
+
+      - name: Upload release APK
+        if: steps.release_key.outputs.release_ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
