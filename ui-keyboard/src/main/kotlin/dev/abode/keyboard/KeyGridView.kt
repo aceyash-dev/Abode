@@ -138,6 +138,8 @@ class KeyGridView @JvmOverloads constructor(
     private var velocityTracker: android.view.VelocityTracker? = null
     private val scrollbarPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val scrollbarRect = RectF()
+    private val bitmapPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG)
+    private val gifClip = Path()
     private var pageSwiped = false
     private val pageSlop get() = 24f * resources.displayMetrics.density
     private val fitPaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -152,6 +154,16 @@ class KeyGridView @JvmOverloads constructor(
     }
 
     var listener: Listener? = null
+
+    /**
+     * Where the grid gets a thumbnail for a GIF cell.
+     *
+     * A function rather than a map so the grid owns no images: the keyboard keeps
+     * the cache and decides what is worth holding, and the grid only asks at draw
+     * time. A null answer draws a placeholder rather than nothing, so a cell that
+     * is still loading keeps its shape.
+     */
+    var imageFor: ((String) -> android.graphics.Bitmap?)? = null
 
     var keyboardLayout: KeyboardLayout = KeyboardLayout.qwerty()
         set(value) {
@@ -507,6 +519,34 @@ class KeyGridView @JvmOverloads constructor(
         canvas.drawRoundRect(scrollbarRect, 2f * density, 2f * density, scrollbarPaint)
     }
 
+    /**
+     * A GIF cell: the still, cropped to fill the key.
+     *
+     * Centre-crop rather than fit, because a row of letterboxed thumbnails reads
+     * as a mistake, and the GIF is not the thing being chosen — its shape is.
+     */
+    private fun drawGifCell(canvas: Canvas, r: RectF, key: Key) {
+        val bitmap = imageFor?.invoke(key.output)
+        if (bitmap == null) {
+            canvas.drawRoundRect(r, corner, corner, actionPaint)
+            return
+        }
+        val scale = maxOf(r.width() / bitmap.width, r.height() / bitmap.height)
+        val halfWidth = bitmap.width * scale / 2f
+        val halfHeight = bitmap.height * scale / 2f
+        gifClip.reset()
+        gifClip.addRoundRect(r, corner, corner, Path.Direction.CW)
+        canvas.save()
+        canvas.clipPath(gifClip)
+        canvas.drawBitmap(
+            bitmap,
+            null,
+            RectF(r.centerX() - halfWidth, r.centerY() - halfHeight, r.centerX() + halfWidth, r.centerY() + halfHeight),
+            bitmapPaint,
+        )
+        canvas.restore()
+    }
+
     /** A magnifier drawn from a circle and a stroke, so it always reads as one. */
     private fun drawMagnifier(canvas: Canvas, rect: RectF) {
         val s = minOf(rect.height() * 0.30f, rect.width() * 0.34f)
@@ -629,6 +669,11 @@ class KeyGridView @JvmOverloads constructor(
 
             if (key.kind == KeyKind.EMOJI_SEARCH) {
                 drawMagnifier(canvas, r)
+                return
+            }
+
+            if (key.kind == KeyKind.GIF_RESULT) {
+                drawGifCell(canvas, r, key)
                 return
             }
 

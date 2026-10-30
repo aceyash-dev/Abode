@@ -214,6 +214,32 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
         /** Kaomoji are long, so one per row, six rows to a page. */
         private const val KAOMOJI_PER_PAGE = 6
 
+        /** How many GIFs across the grid. Three reads as thumbnails, not stamps. */
+        private const val GIF_PER_ROW = 3
+
+        /**
+         * The results of one Giphy search, as a grid of thumbnails.
+         *
+         * [urls] are the media links, in the order the search returned them. The
+         * grid draws a still for each and inserts the link; the still is looked up
+         * by URL, so the layout carries only strings.
+         */
+        fun gifResults(urls: List<String>): KeyboardLayout {
+            val rows = mutableListOf<List<Key>>()
+            urls.chunked(GIF_PER_ROW).forEach { row ->
+                rows += row.map { url ->
+                    Key("", KeyKind.GIF_RESULT, output = url, widthWeight = 1f)
+                }
+            }
+            rows += listOf(
+                Key("Back", KeyKind.GIF, widthWeight = 1.6f),
+                Key("space", KeyKind.SPACE, output = " ", widthWeight = 3.2f),
+                Key("\u232B", KeyKind.DELETE, widthWeight = 1.2f),
+                Key("return", KeyKind.ENTER, widthWeight = 1.8f),
+            )
+            return KeyboardLayout(rows)
+        }
+
         /**
          * The emoji page as one scrolling column: the search row, then every glyph
          * in the category, then the tabs and the bottom row.

@@ -135,6 +135,20 @@ class AbodeInputMethodService : InputMethodService(),
     private var gifQuery = ""
     private var gifJob: Job? = null
     private var currentGifs: List<GifResult> = emptyList()
+
+    /** True while the grid is showing the results of the last search. */
+    private var gifResultsMode = false
+
+    /**
+     * Thumbnails, held by media URL.
+     *
+     * A few hundred KB of stills, kept for the session only: the GIF grid is
+     * looked at for a second and then closed, so nothing here is worth writing to
+     * disk, and an LRU cap means a long session cannot grow it without bound.
+     */
+    private val gifBitmaps = android.util.LruCache<String, android.graphics.Bitmap>(8 * 1024 * 1024) {
+        it.byteCount
+    }
     private var toolbarMode = false
     private var numericMode = false
     private var clipboardMode = false
@@ -225,6 +239,7 @@ class AbodeInputMethodService : InputMethodService(),
             }
 
             grid = KeyGridView(this).apply {
+                imageFor = { url -> gifBitmaps.get(url) }
                 keyboardLayout = KeyboardLayout.qwerty()
                 listener = object : KeyGridView.Listener {
                     override fun onKeyDown(key: Key) = this@AbodeInputMethodService.onKeyDown(key)
@@ -378,8 +393,10 @@ class AbodeInputMethodService : InputMethodService(),
         when (key.kind) {
             KeyKind.CHARACTER -> {
                 if (gifSearch) {
+                    // Only the query is collected here. One search per return, not
+                    // one per letter: the key is a quota.
                     gifQuery += key.output.lowercase()
-                    refreshGifSearch()
+                    showGifQuery()
                     return
                 }
                 if (emojiSearch) {
@@ -416,7 +433,7 @@ class AbodeInputMethodService : InputMethodService(),
             }
 
             KeyKind.ENTER -> when {
-                gifSearch -> endGifSearch()
+                gifSearch -> runGifSearch()
                 emojiSearch -> endEmojiSearch()
                 else -> handleEnter()
             }
@@ -448,7 +465,8 @@ class AbodeInputMethodService : InputMethodService(),
             KeyKind.EMOJI_TAB -> selectEmojiCategory(key.output.toIntOrNull() ?: 0)
             KeyKind.EMOJI_MORE -> nextEmojiPage()
             KeyKind.EMOJI_SEARCH -> beginEmojiSearch()
-            KeyKind.GIF -> beginGifSearch()
+            KeyKind.GIF -> if (gifResultsMode) endGifSearch() else beginGifSearch()
+            KeyKind.GIF_RESULT -> pickGifByUrl(key.output)
 
             // TODO(M4): the AI sheet. The rest are handled elsewhere or are inert.
             KeyKind.DELETE, KeyKind.CLIPBOARD, KeyKind.AI, KeyKind.SPACER -> Unit
@@ -731,11 +749,12 @@ class AbodeInputMethodService : InputMethodService(),
         if (!::grid.isInitialized) return
         // The emoji grid scrolls now rather than paging, so the pager stays off.
         grid.pagingEnabled = false
-        grid.scrollable = emojiMode && !emojiSearch && !gifSearch
-        grid.pinnedTopRows = 1
-        grid.pinnedRows = 2
+        grid.scrollable = (emojiMode && !emojiSearch && !gifSearch) || gifResultsMode
+        grid.pinnedTopRows = if (gifResultsMode) 0 else 1
+        grid.pinnedRows = if (gifResultsMode) 1 else 2
         grid.visibleContentRows = 4
         val base = when {
+            gifResultsMode -> KeyboardLayout.gifResults(currentGifs.map { it.url })
             gifSearch -> KeyboardLayout.qwerty(shifted = false, numberRow = true, capsLock = false, enterLabel = enterLabel())
             clipboardMode -> KeyboardLayout.clipboard(clipHistory.toList())
             toolbarMode -> KeyboardLayout.editing(typedStyle = typedStyle)
@@ -857,13 +876,15 @@ class AbodeInputMethodService : InputMethodService(),
 
     private fun beginGifSearch() {
         gifSearch = true
+        gifResultsMode = false
         gifQuery = ""
         applyLayout()
-        refreshGifSearch()
+        showGifQuery()
     }
 
     private fun endGifSearch() {
         gifSearch = false
+        gifResultsMode = false
         gifQuery = ""
         gifJob?.cancel()
         gifJob = null
@@ -879,52 +900,87 @@ class AbodeInputMethodService : InputMethodService(),
     private fun backspaceGifSearch() {
         if (gifQuery.isEmpty()) endGifSearch() else {
             gifQuery = gifQuery.dropLast(1)
-            refreshGifSearch()
+            showGifQuery()
+        }
+    }
+
+    /** Types the query on the strip. No request: that waits for the return key. */
+    private fun showGifQuery() {
+        if (!::strip.isInitialized) return
+        strip.suggestions = emptyList()
+        strip.status = if (gifQuery.isEmpty()) {
+            "Type a GIF search, then return"
+        } else {
+            "GIF: \u201C$gifQuery\u201D \u2014 return to search"
         }
     }
 
     /**
-     * Asks Giphy for the query, once the typing pauses.
+     * One request, one page of results.
      *
-     * A request per keystroke would spend the rate limit on half-typed words and
-     * land out of order; the previous request is cancelled instead, so the strip
-     * only ever shows the answer to the query in the box.
+     * The key is a quota, so a search costs exactly one call and the grid then
+     * shows stills that were fetched once. Nothing here runs per keystroke, and
+     * scrolling the results never asks Giphy anything.
      */
-    private fun refreshGifSearch() {
-        gifJob?.cancel()
-        if (gifQuery.isBlank()) {
-            currentGifs = emptyList()
-            currentSuggestions = emptyList()
-            if (::strip.isInitialized) {
-                strip.suggestions = emptyList()
-                strip.status = "Type what the GIF should be"
-            }
+    private fun runGifSearch() {
+        val query = gifQuery.trim()
+        if (query.isEmpty()) {
+            showGifQuery()
             return
         }
         if (::strip.isInitialized) {
             strip.suggestions = emptyList()
             strip.status = "Searching GIFs\u2026"
         }
+        gifJob?.cancel()
         gifJob = scope.launch {
-            delay(GIF_SEARCH_DELAY_MS)
-            runCatching { GiphyClient.search(gifQuery, 3) }
+            runCatching { GiphyClient.search(query) }
                 .onSuccess { results ->
                     currentGifs = results
-                    currentSuggestions = results.map { it.title }
+                    gifResultsMode = results.isNotEmpty()
+                    gifSearch = false
                     if (::strip.isInitialized) {
-                        strip.status = if (results.isEmpty()) "No GIFs for \u201C$gifQuery\u201D" else ""
-                        strip.suggestions = results.map { it.title }
+                        strip.status = if (results.isEmpty()) "No GIFs for \u201C$query\u201D" else ""
                     }
+                    applyLayout()
+                    loadGifStills(results)
                 }
                 .onFailure { error ->
-                    currentGifs = emptyList()
-                    currentSuggestions = emptyList()
                     if (::strip.isInitialized) {
-                        strip.suggestions = emptyList()
                         strip.status = error.message ?: "Giphy search failed"
                     }
                 }
         }
+    }
+
+    /** Fetches the stills once, a few at a time, and repaints as they land. */
+    private fun loadGifStills(results: List<GifResult>) {
+        results.forEach { result ->
+            if (gifBitmaps.get(result.url) != null) return@forEach
+            scope.launch {
+                val bitmap = kotlinx.coroutines.withContext(AbodeDispatchers.io) {
+                    downloadStill(result.thumbUrl)
+                }
+                if (bitmap != null) {
+                    gifBitmaps.put(result.url, bitmap)
+                    if (::grid.isInitialized) grid.invalidate()
+                }
+            }
+        }
+    }
+
+    private fun downloadStill(url: String): android.graphics.Bitmap? = runCatching {
+        val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+        connection.connectTimeout = 10_000
+        connection.readTimeout = 15_000
+        connection.inputStream.use { android.graphics.BitmapFactory.decodeStream(it) }
+    }.getOrNull()
+
+    /** Inserts the link of the GIF that was tapped. */
+    private fun pickGifByUrl(url: String) {
+        if (url.isBlank()) return
+        commit(url)
+        endGifSearch()
     }
 
     /** Inserts the link of the tapped GIF and leaves search. */
@@ -1431,8 +1487,6 @@ class AbodeInputMethodService : InputMethodService(),
         const val MAX_CLIPS = 20
         const val DOUBLE_TAP_MS = 320L
 
-        /** Long enough to finish a word, short enough that the strip feels alive. */
-        const val GIF_SEARCH_DELAY_MS = 350L
 
         /**
          * Subtypes written in Devanagari. They all transliterate through the same

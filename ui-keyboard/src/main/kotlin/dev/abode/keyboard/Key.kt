@@ -54,6 +54,9 @@ enum class KeyKind {
     /** Opens Giphy search: letters are the query, a tap inserts a GIF link. */
     GIF,
 
+    /** One result in the GIF grid. [Key.output] is the media URL to insert. */
+    GIF_RESULT,
+
     /** Draws nothing and does nothing: the gap in the iOS-style bottom strip. */
     SPACER,
 }

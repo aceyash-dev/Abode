@@ -8,8 +8,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
-/** One GIF: what to show in the strip, and what to insert. */
-data class GifResult(val title: String, val url: String)
+/** One GIF: what to show, what to insert, and the still to draw in the grid. */
+data class GifResult(val title: String, val url: String, val thumbUrl: String)
 
 /**
  * Giphy search, for the GIF tab on the emoji page.
@@ -25,7 +25,16 @@ data class GifResult(val title: String, val url: String)
  */
 object GiphyClient {
 
-    suspend fun search(query: String, limit: Int = 3): List<GifResult> =
+    /**
+     * How many GIFs one search asks for.
+     *
+     * One request per search, not per keystroke: the key is a quota, and a
+     * keyboard that searched on every letter would spend a day's allowance on
+     * one word. Twelve fills four rows of the grid and costs one call.
+     */
+    const val GIFS_PER_SEARCH = 12
+
+    suspend fun search(query: String, limit: Int = GIFS_PER_SEARCH): List<GifResult> =
         withContext(Dispatchers.IO) {
             val key = BuildConfig.GIPHY_API_KEY
             if (key.isBlank()) {
@@ -69,8 +78,13 @@ object GiphyClient {
             val images = item.optJSONObject("images")
             val url = images?.optJSONObject("original")?.optString("url").orEmpty()
                 .ifBlank { item.optString("url") }
+            // The still is a few KB where the GIF is megabytes: the grid draws the
+            // still, and only the link is inserted.
+            val thumb = images?.optJSONObject("fixed_height")?.optString("url").orEmpty()
+                .ifBlank { images?.optJSONObject("downsized")?.optString("url").orEmpty() }
+                .ifBlank { url }
             if (url.isBlank()) continue
-            results.add(GifResult(title = title.ifBlank { "GIF" }, url = url))
+            results.add(GifResult(title = title.ifBlank { "GIF" }, url = url, thumbUrl = thumb))
         }
         return results
     }
