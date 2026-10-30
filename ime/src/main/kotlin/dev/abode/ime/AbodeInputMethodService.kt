@@ -112,7 +112,7 @@ class AbodeInputMethodService : InputMethodService(),
     private var numericMode = false
     private var clipboardMode = false
     private var emojiMode = false
-    private var emojiCategory = 1
+    private var emojiCategory = 0
     private var emojiPage = 0
     private val clipHistory = ArrayDeque<String>()
     private var transliterate = false
@@ -307,7 +307,6 @@ class AbodeInputMethodService : InputMethodService(),
                     return
                 }
                 commit(key.output)
-                if (emojiMode) recordRecent(key.output)
                 if (shifted && !capsLock) setShift(false)
                 trackSentence(key.output)
                 suggestionEngine.onPrefixChanged(currentWordPrefix(), capitalise = sentenceEnded)
@@ -597,7 +596,7 @@ class AbodeInputMethodService : InputMethodService(),
     private fun applyLayout() {
         if (!::grid.isInitialized) return
         grid.keyboardLayout = when {
-            emojiSearch -> KeyboardLayout.qwerty(shifted = false, numberRow = true, capsLock = false, enterLabel = enterLabel())
+            emojiSearch -> KeyboardLayout.qwerty(shifted = false, capsLock = false, enterLabel = enterLabel())
             clipboardMode -> KeyboardLayout.clipboard(clipHistory.toList())
             toolbarMode -> KeyboardLayout.editing()
             numericMode -> KeyboardLayout.numeric()
@@ -605,7 +604,6 @@ class AbodeInputMethodService : InputMethodService(),
             emojiMode -> KeyboardLayout.emoji(emojiCategory, emojiPage, ::emojiRenders)
             else -> KeyboardLayout.qwerty(
                 shifted = shifted,
-                numberRow = true,
                 capsLock = capsLock,
                 enterLabel = enterLabel(),
             )
@@ -736,41 +734,12 @@ class AbodeInputMethodService : InputMethodService(),
     private fun pickSearchEmoji(index: Int) {
         val emoji = currentSuggestions.getOrNull(index) ?: return
         commit(emoji)
-        recordRecent(emoji)
         endEmojiSearch()
-    }
-
-    private val emojiPrefs by lazy { getSharedPreferences("abode_emoji", MODE_PRIVATE) }
-
-    /** Recent emoji survive restarts: a small list in the keyboard's own preferences. */
-    private fun loadRecents(): List<String> = try {
-        emojiPrefs.getString("recent", "").orEmpty().split('\u0001').filter { it.isNotEmpty() }
-    } catch (e: Exception) {
-        emptyList()
-    }
-
-    private fun recordRecent(emoji: String) {
-        val list = (listOf(emoji) + EmojiPalette.recents.filter { it != emoji }).take(30)
-        EmojiPalette.recents = list
-        try {
-            emojiPrefs.edit().putString("recent", list.joinToString("\u0001")).apply()
-        } catch (e: Exception) {
-            AbodeLog.w("recents not saved: ${e.message}")
-        }
-    }
-
-    /** A sideways swipe on the emoji page turns to the previous or next page. */
-    private fun onEmojiPage(step: Int) {
-        if (!emojiMode || emojiSearch) return
-        val pages = KeyboardLayout.emojiPageCount(emojiCategory, ::emojiRenders)
-        emojiPage = ((emojiPage + step) % pages + pages) % pages
-        applyLayout()
     }
 
     private fun toggleEmoji() {
         emojiSearch = false
         emojiQuery = ""
-        if (!emojiMode) EmojiPalette.recents = loadRecents()
         emojiMode = !emojiMode
         if (emojiMode) {
             symbolsMode = false
@@ -784,7 +753,7 @@ class AbodeInputMethodService : InputMethodService(),
     }
 
     private fun selectEmojiCategory(index: Int) {
-        emojiCategory = index.coerceIn(0, EmojiPalette.tabs.lastIndex)
+        emojiCategory = index.coerceIn(0, EmojiCatalog.categories.lastIndex)
         emojiPage = 0
         applyLayout()
     }
