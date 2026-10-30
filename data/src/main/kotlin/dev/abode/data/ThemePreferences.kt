@@ -38,6 +38,7 @@ class ThemePreferences(private val context: Context) {
             cornerRadiusDp = prefs[KEY_CORNER] ?: defaults.cornerRadiusDp,
             keyGapDp = prefs[KEY_GAP] ?: defaults.keyGapDp,
             rowHeightDp = prefs[KEY_ROW_HEIGHT] ?: defaults.rowHeightDp,
+            autocorrectSensitivity = prefs[KEY_SENSITIVITY] ?: defaults.autocorrectSensitivity,
             keyShape = prefs[KEY_SHAPE]?.let { value ->
                 KeyShape.entries.firstOrNull { it.name == value }
             } ?: defaults.keyShape,
@@ -59,6 +60,7 @@ class ThemePreferences(private val context: Context) {
             prefs[KEY_GAP] = theme.keyGapDp
             prefs[KEY_ROW_HEIGHT] = theme.rowHeightDp
             prefs[KEY_SHAPE] = theme.keyShape.name
+            prefs[KEY_SENSITIVITY] = theme.autocorrectSensitivity
         }
     }
 
@@ -76,6 +78,7 @@ class ThemePreferences(private val context: Context) {
         val KEY_GAP = floatPreferencesKey("key_gap")
         val KEY_ROW_HEIGHT = floatPreferencesKey("row_height")
         val KEY_SHAPE = stringPreferencesKey("key_shape")
+        val KEY_SENSITIVITY = intPreferencesKey("autocorrect_sensitivity")
     }
 }
 

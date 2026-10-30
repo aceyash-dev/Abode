@@ -184,7 +184,7 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
                 listOf(
                     digits("1234567890"),
                     listOf("-", "/", ":", ";", "(", ")", "₹", "&", "@", "\"").map { Key(it) },
-                    listOf("%", "#", "+", "=", "*", "~", "|", "\\", "<", ">").map { Key(it) },
+                    listOf("%", "*", "~", "|", "\\", "<", ">", "©", "®", "°").map { Key(it) },
                     listOf(
                         Key("⇧", KeyKind.SHIFT, widthWeight = 1.5f),
                     ) + listOf("#", "+", "=", ".", ",", "?", "!").map { Key(it) } + listOf(

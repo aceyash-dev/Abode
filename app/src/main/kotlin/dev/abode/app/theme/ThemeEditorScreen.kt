@@ -140,6 +140,22 @@ fun ThemeEditorScreen(onBack: () -> Unit) {
             }
         }
 
+        Text("Autocorrect", style = MaterialTheme.typography.titleSmall)
+        Text(
+            text = when (theme.autocorrectSensitivity) {
+                0 -> "Off — nothing is corrected"
+                2 -> "Aggressive — corrects short words too"
+                else -> "Normal — corrects words of four letters or more"
+            },
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Slider(
+            value = theme.autocorrectSensitivity.toFloat(),
+            onValueChange = { update(theme.copy(autocorrectSensitivity = it.toInt())) },
+            valueRange = 0f..2f,
+            steps = 1,
+        )
+
         Text("Colours", style = MaterialTheme.typography.titleSmall)
         KeyboardTheme.COLOR_ROLES.forEach { (role, _) ->
             Row(

@@ -102,9 +102,11 @@ class SuggestionEngine(
      * filters by length and caps the scan, which keeps this in the low
      * milliseconds even on a large word list.
      */
-    fun autocorrect(word: String): String? {
+    fun autocorrect(word: String, sensitivity: Int = 1): String? {
         val dict = dictionary ?: return null
-        if (word.length < 3) return null
+        if (sensitivity <= 0) return null
+        val minimumLength = if (sensitivity >= 2) 2 else 4
+        if (word.length < minimumLength) return null
         if (word.all { !it.isLetter() }) return null
         if (dict.contains(word.lowercase())) return null
 

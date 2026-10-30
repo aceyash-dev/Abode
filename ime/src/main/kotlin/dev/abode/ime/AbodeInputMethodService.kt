@@ -344,7 +344,7 @@ class AbodeInputMethodService : InputMethodService(),
         val word = before.takeLastWhile { it.isLetter() || it == '\'' }
         if (word.length < 3) return
 
-        val correction = suggestionEngine.autocorrect(word) ?: return
+        val correction = suggestionEngine.autocorrect(word, currentTheme.autocorrectSensitivity) ?: return
         if (correction == word) return
 
         ic.beginBatchEdit()

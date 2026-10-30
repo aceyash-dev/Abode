@@ -28,6 +28,12 @@ data class KeyboardTheme(
     val keyGapDp: Float = 6f,
     val rowHeightDp: Float = 52f,
     val keyShape: KeyShape = KeyShape.HEXAGON,
+    /**
+     * 0 corrects nothing, 1 corrects words of four letters or more, 2 also takes
+     * two-letter words. People have strong opinions about this, and the ones who
+     * turn autocorrect off are usually reacting to it firing too early.
+     */
+    val autocorrectSensitivity: Int = 1,
 ) {
     companion object {
         /** Role -> human label, in the order the editor shows them. */

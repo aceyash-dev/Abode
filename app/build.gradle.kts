@@ -37,11 +37,26 @@ android {
         val gitSha = (project.findProperty("gitSha") as String?)?.take(7) ?: "dev"
         buildConfigField("String", "GIT_SHA", "\"$gitSha\"")
 
-        versionCode = 5
-        versionName = "0.5.0"
+        versionCode = 6
+        versionName = "0.6.0"
     }
 
     signingConfigs {
+        // A debug key checked into the repository on purpose.
+        //
+        // CI runners create a fresh debug keystore per job, so every nightly came
+        // out with a different signature — which is why installing one over the
+        // previous one failed with "app not installed" and needed an uninstall
+        // first. One shared debug key means nightlies upgrade in place.
+        //
+        // This key is public by design and must never sign a release.
+        getByName("debug") {
+            storeFile = rootProject.file("keystore/abode-debug.p12")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+
         if (hasReleaseKeystore) {
             create("release") {
                 storeFile = rootProject.file(releaseStoreFile!!)
