@@ -18,6 +18,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,6 +57,18 @@ fun ChymeScreen(onBack: () -> Unit) {
     var testing by remember { mutableStateOf(false) }
     var models by remember { mutableStateOf<List<String>>(emptyList()) }
     var findingModels by remember { mutableStateOf(false) }
+    var modelFilter by remember { mutableStateOf("") }
+    var autoFetched by remember { mutableStateOf(false) }
+
+    // Fetch once, as soon as the screen opens and there is a key to fetch with.
+    // A picker you have to ask for is a picker people never see.
+    LaunchedEffect(saved.apiKey, saved.endpoint) {
+        if (!autoFetched && saved.apiKey.isNotBlank() && saved.endpoint.isNotBlank()) {
+            autoFetched = true
+            runCatching { ChymeClient.models(saved) }
+                .onSuccess { models = it }
+        }
+    }
 
     fun currentConfig() = ChymeConfig(
         provider = provider,
@@ -199,13 +212,27 @@ fun ChymeScreen(onBack: () -> Unit) {
             // field, so a name that the provider actually serves is one tap away
             // instead of a guess typed from memory.
             if (models.isNotEmpty()) {
+                OutlinedTextField(
+                    value = modelFilter,
+                    onValueChange = { modelFilter = it },
+                    label = { Text("Filter models (${models.size})") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                val shown = remember(models, modelFilter) {
+                    if (modelFilter.isBlank()) {
+                        models
+                    } else {
+                        models.filter { it.contains(modelFilter, ignoreCase = true) }
+                    }
+                }
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    for (id in models.take(24)) {
+                    for (id in shown.take(40)) {
                         if (id == model) {
                             Button(onClick = { model = id }) { Text(id) }
                         } else {

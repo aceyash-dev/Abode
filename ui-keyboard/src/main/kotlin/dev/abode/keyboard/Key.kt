@@ -63,6 +63,9 @@ enum class KeyKind {
     /** Opens and closes the selection group in the tool row. */
     EDIT_GROUP,
 
+    /** Opens the Abode app, where the keyboard is set up and themed. */
+    APP,
+
     /** One result in the GIF grid. [Key.output] is the media URL to insert. */
     GIF_RESULT,
 

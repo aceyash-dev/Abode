@@ -371,6 +371,7 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
                 Key("Google", KeyKind.SEARCH_WEB, widthWeight = 1.1f),
                 Key("Clip", KeyKind.CLIPBOARD, widthWeight = 1f),
                 Key("Chyme", KeyKind.CHYME, widthWeight = 1.1f),
+                Key("App", KeyKind.APP, widthWeight = 1f),
                 Key("Text: ${TYPED_STYLE_NAMES.getOrElse(typedStyle) { "Off" }}", KeyKind.SERIF_TOGGLE, widthWeight = 1.3f, active = typedStyle != 0),
                 Key("Done", KeyKind.EDIT, widthWeight = 1f),
             )

@@ -579,6 +579,7 @@ class AbodeInputMethodService : InputMethodService(),
             KeyKind.SEARCH_WEB -> searchWeb()
             KeyKind.SELECT_WORD -> selectWord()
             KeyKind.CHYME -> toggleChyme()
+            KeyKind.APP -> openAbodeApp()
             KeyKind.EDIT_GROUP -> {
                 editGroupOpen = !editGroupOpen
                 applyLayout()

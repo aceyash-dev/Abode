@@ -47,6 +47,12 @@ enum class ChymeProvider(
         "openai/gpt-4o-mini",
         ChymeWire.OPENAI,
     ),
+    GROQ(
+        "Groq",
+        "https://api.groq.com/openai/v1/chat/completions",
+        "llama-3.3-70b-versatile",
+        ChymeWire.OPENAI,
+    ),
     CUSTOM(
         "Custom",
         "",
