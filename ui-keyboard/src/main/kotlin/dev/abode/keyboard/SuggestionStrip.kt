@@ -179,7 +179,7 @@ class SuggestionStrip @JvmOverloads constructor(
         gap = theme.keyGapDp * density
         slotHeight = (theme.rowHeightDp * 0.7f) * density
         corner = theme.cornerRadiusDp * density
-        labelPaint.typeface = ThemeTypeface.forTheme(theme.fontPath)
+        labelPaint.typeface = ThemeTypeface.forTheme(theme.fontPath, theme.fontFamily)
             ?: Typeface.create("sans-serif-medium", Typeface.NORMAL)
         buildSlots()
         invalidate()

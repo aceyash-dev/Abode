@@ -36,6 +36,7 @@ class ThemePreferences(private val context: Context) {
             popupBackground = prefs[KEY_POPUP_BACKGROUND] ?: defaults.popupBackground,
             accent = prefs[KEY_ACCENT] ?: defaults.accent,
             fontPath = prefs[KEY_FONT_PATH]?.takeIf { it.isNotBlank() },
+            fontFamily = prefs[KEY_FONT_FAMILY] ?: defaults.fontFamily,
             cornerRadiusDp = prefs[KEY_CORNER] ?: defaults.cornerRadiusDp,
             keyGapDp = prefs[KEY_GAP] ?: defaults.keyGapDp,
             rowHeightDp = prefs[KEY_ROW_HEIGHT] ?: defaults.rowHeightDp,
@@ -62,6 +63,7 @@ class ThemePreferences(private val context: Context) {
             prefs[KEY_POPUP_BACKGROUND] = theme.popupBackground
             prefs[KEY_ACCENT] = theme.accent
             prefs[KEY_FONT_PATH] = theme.fontPath.orEmpty()
+            prefs[KEY_FONT_FAMILY] = theme.fontFamily
             prefs[KEY_CORNER] = theme.cornerRadiusDp
             prefs[KEY_GAP] = theme.keyGapDp
             prefs[KEY_ROW_HEIGHT] = theme.rowHeightDp
@@ -85,6 +87,7 @@ class ThemePreferences(private val context: Context) {
         val KEY_POPUP_BACKGROUND = intPreferencesKey("color_popup")
         val KEY_ACCENT = intPreferencesKey("color_accent")
         val KEY_FONT_PATH = stringPreferencesKey("font_path")
+        val KEY_FONT_FAMILY = stringPreferencesKey("font_family")
         val KEY_CORNER = floatPreferencesKey("corner_radius")
         val KEY_GAP = floatPreferencesKey("key_gap")
         val KEY_ROW_HEIGHT = floatPreferencesKey("row_height")

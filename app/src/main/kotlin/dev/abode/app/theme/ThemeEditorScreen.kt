@@ -232,9 +232,32 @@ fun ThemeEditorScreen(onBack: () -> Unit) {
 
         Text("Font", style = MaterialTheme.typography.titleSmall)
         Text(
-            text = theme.fontPath?.let { File(it).name } ?: "System font",
+            text = theme.fontPath?.let { File(it).name }
+                ?: when (theme.fontFamily) {
+                    KeyboardTheme.FONT_SERIF -> "Serif"
+                    KeyboardTheme.FONT_MONO -> "Monospace"
+                    else -> "System font"
+                },
             style = MaterialTheme.typography.bodySmall,
         )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for ((family, label) in listOf(
+                KeyboardTheme.FONT_SANS to "Default",
+                KeyboardTheme.FONT_SERIF to "Serif",
+                KeyboardTheme.FONT_MONO to "Mono",
+            )) {
+                val selected = theme.fontPath == null && theme.fontFamily == family
+                if (selected) {
+                    Button(onClick = { update(theme.copy(fontFamily = family, fontPath = null)) }) {
+                        Text(label)
+                    }
+                } else {
+                    OutlinedButton(onClick = { update(theme.copy(fontFamily = family, fontPath = null)) }) {
+                        Text(label)
+                    }
+                }
+            }
+        }
         fontError?.let {
             Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         }
@@ -318,12 +341,17 @@ private fun LabelledSlider(
 /** A live sample drawn with the current theme, so changes are visible immediately. */
 @Composable
 private fun ThemePreview(theme: KeyboardTheme) {
-    val family = remember(theme.fontPath) {
+    val family = remember(theme.fontPath, theme.fontFamily) {
         val path = theme.fontPath
         val file = path?.let { File(it) }
         val usable = file != null && file.exists() &&
             runCatching { Typeface.createFromFile(file) }.isSuccess
-        if (usable && file != null) FontFamily(Font(file)) else FontFamily.Default
+        when {
+            usable && file != null -> FontFamily(Font(file))
+            theme.fontFamily == KeyboardTheme.FONT_SERIF -> FontFamily.Serif
+            theme.fontFamily == KeyboardTheme.FONT_MONO -> FontFamily.Monospace
+            else -> FontFamily.Default
+        }
     }
 
     val keyShape = remember(theme.keyShape, theme.cornerRadiusDp) {

@@ -24,8 +24,14 @@ data class KeyboardTheme(
     val keyLabel: Int = 0xFFFFFFFF.toInt(),
     val popupBackground: Int = 0xFF48484A.toInt(),
     val accent: Int = 0xFF0A84FF.toInt(),
-    /** Absolute path to a font file the user imported, or null for the system face. */
+    /** Absolute path to a font file the user imported, or null for a built-in face. */
     val fontPath: String? = null,
+    /**
+     * Which built-in face to use when no file was imported: "sans", "serif" or
+     * "mono". A file path wins over this, because importing a font is a more
+     * specific choice than picking one of three.
+     */
+    val fontFamily: String = FONT_SANS,
     val cornerRadiusDp: Float = 12f,
     val keyGapDp: Float = 6f,
     val rowHeightDp: Float = 52f,
@@ -49,6 +55,10 @@ data class KeyboardTheme(
     val isDark: Boolean = true,
 ) {
     companion object {
+
+        const val FONT_SANS = "sans"
+        const val FONT_SERIF = "serif"
+        const val FONT_MONO = "mono"
 
         /**
          * Builds the colour roles from one seed, in the spirit of Material 3's

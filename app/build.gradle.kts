@@ -83,6 +83,25 @@ android {
         }
     }
 
+    /**
+     * One APK per ABI instead of one fat APK.
+     *
+     * The debug build carries the dictionary and the native libraries of every
+     * ABI it is built for, and a phone only ever needs one of them. Splitting
+     * halves what has to be downloaded and installed on each device.
+     *
+     * No universal APK: it would be the same fat build under another name, and
+     * having one on the artifact list is how the wrong file gets installed.
+     */
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("armeabi-v7a", "arm64-v8a")
+            isUniversalApk = false
+        }
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true

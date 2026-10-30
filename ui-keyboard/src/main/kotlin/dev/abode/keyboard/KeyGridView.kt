@@ -20,7 +20,6 @@ import compose.icons.tablericons.Clipboard
 import compose.icons.tablericons.CornerDownLeft
 import compose.icons.tablericons.World
 import compose.icons.tablericons.Microphone
-import compose.icons.tablericons.Search
 import dev.abode.core.common.theme.KeyShape
 import dev.abode.core.common.theme.KeyboardTheme
 import java.io.File
@@ -32,14 +31,26 @@ import java.io.File
 object ThemeTypeface {
     private val cache = HashMap<String, Typeface>()
 
-    fun forTheme(path: String?): Typeface? {
-        if (path.isNullOrBlank()) return null
-        cache[path]?.let { return it }
-        val file = File(path)
-        if (!file.exists()) return null
-        return runCatching { Typeface.createFromFile(file) }
-            .onSuccess { cache[path] = it }
-            .getOrNull()
+    /**
+     * A file the user imported wins; otherwise one of the three built-in faces.
+     * Serif and monospace are the two the platform always has, so they cost
+     * nothing to offer and need no font shipped in the APK.
+     */
+    fun forTheme(path: String?, family: String = KeyboardTheme.FONT_SANS): Typeface? {
+        if (!path.isNullOrBlank()) {
+            cache[path]?.let { return it }
+            val file = File(path)
+            if (file.exists()) {
+                return runCatching { Typeface.createFromFile(file) }
+                    .onSuccess { cache[path] = it }
+                    .getOrNull()
+            }
+        }
+        return when (family) {
+            KeyboardTheme.FONT_SERIF -> Typeface.SERIF
+            KeyboardTheme.FONT_MONO -> Typeface.MONOSPACE
+            else -> Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        }
     }
 
     fun clear() = cache.clear()
@@ -198,6 +209,8 @@ class KeyGridView @JvmOverloads constructor(
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
+    /** The dot that says a key has a long press. */
+    private val hintPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val secondaryPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.RIGHT
         textSize = 11f * resources.displayMetrics.scaledDensity
@@ -232,9 +245,10 @@ class KeyGridView @JvmOverloads constructor(
         popupSelectedPaint.color = theme.keyPressed
         labelPaint.color = theme.keyLabel
         secondaryPaint.color = (theme.keyLabel and 0x00FFFFFF) or (0xAA shl 24)
+        hintPaint.color = (theme.keyLabel and 0x00FFFFFF) or (0x55 shl 24)
         iconPaint.color = theme.keyLabel
         iconCache.clear()
-        labelPaint.typeface = ThemeTypeface.forTheme(theme.fontPath)
+        labelPaint.typeface = ThemeTypeface.forTheme(theme.fontPath, theme.fontFamily)
             ?: Typeface.create("sans-serif-medium", Typeface.NORMAL)
         // Cloned rather than configured separately, so an imported font and the
         // theme colour carry over to the smaller size.
@@ -331,7 +345,9 @@ class KeyGridView @JvmOverloads constructor(
         KeyKind.GLOBE -> TablerIcons.World
         KeyKind.VOICE -> TablerIcons.Microphone
         KeyKind.CLIPBOARD -> TablerIcons.Clipboard
-        KeyKind.EMOJI_SEARCH -> TablerIcons.Search
+        // Drawn by hand: the vector Search glyph is a circle plus a stroke, and
+        // the converter drops its relative arc, so it rendered as a stray tick.
+        KeyKind.EMOJI_SEARCH -> null
         // The "ABC" that returns from emoji stays a word: it names the page it goes to.
         KeyKind.EMOJI -> null
         else -> null
@@ -376,6 +392,18 @@ class KeyGridView @JvmOverloads constructor(
         }
     }
 
+    /** A magnifier drawn from a circle and a stroke, so it always reads as one. */
+    private fun drawMagnifier(canvas: Canvas, rect: RectF) {
+        val s = minOf(rect.height() * 0.30f, rect.width() * 0.34f)
+        if (s <= 0f) return
+        val cx = rect.centerX() - s * 0.12f
+        val cy = rect.centerY() - s * 0.12f
+        iconPaint.style = Paint.Style.STROKE
+        iconPaint.strokeWidth = s * 0.22f
+        canvas.drawCircle(cx, cy, s * 0.6f, iconPaint)
+        canvas.drawLine(cx + s * 0.45f, cy + s * 0.45f, cx + s * 0.95f, cy + s * 0.95f, iconPaint)
+    }
+
     private fun drawIcon(canvas: Canvas, rect: RectF, vector: ImageVector, kind: KeyKind) {
         val size = minOf(rect.height() * 0.44f, rect.width() * 0.5f)
         if (size <= 0f) return
@@ -400,6 +428,11 @@ class KeyGridView @JvmOverloads constructor(
             if (fill != null) canvas.drawPath(keyPaths[i], fill)
             if (key.kind == KeyKind.SHIFT) {
                 drawShift(canvas, r, caps = key.label == KeyboardLayout.CAPS_LOCK_LABEL, active = key.active)
+                continue
+            }
+
+            if (key.kind == KeyKind.EMOJI_SEARCH) {
+                drawMagnifier(canvas, r)
                 continue
             }
 
@@ -432,6 +465,18 @@ class KeyGridView @JvmOverloads constructor(
                 val x = r.right - 7f * resources.displayMetrics.density
                 val y = r.top + secondaryPaint.textSize + 3f * resources.displayMetrics.density
                 canvas.drawText(small, x, y, secondaryPaint)
+            }
+
+            if (keys[i].hasAlternates) {
+                // A dot in the corner: this key has a long press. Without it the
+                // alternates exist and nobody finds them, which is what happened
+                // to the symbol pages.
+                canvas.drawCircle(
+                    r.right - 7f * density,
+                    r.bottom - 7f * density,
+                    1.8f * density,
+                    hintPaint,
+                )
             }
         }
 

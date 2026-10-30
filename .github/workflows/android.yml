@@ -31,11 +31,20 @@ jobs:
       - name: Assemble debug APK
         run: gradle :app:assembleDebug -PgitSha=${{ github.sha }} --stacktrace
 
-      - name: Upload APK
+      # One artifact per ABI. A glob over *.apk would pack both into a single
+      # zip, and a zip of APKs is not something anyone can install.
+      - name: Upload debug APK (arm64-v8a)
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: app/build/outputs/apk/debug/*.apk
+          name: app-debug-arm64-v8a
+          path: app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
+          if-no-files-found: warn
+
+      - name: Upload debug APK (armeabi-v7a)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-armeabi-v7a
+          path: app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk
           if-no-files-found: warn
 
       # The upload key comes from repository secrets, never from the repo. If the
@@ -69,10 +78,18 @@ jobs:
         if: steps.release_key.outputs.release_ready == 'true'
         run: gradle :app:assembleRelease -PgitSha=${{ github.sha }} --stacktrace
 
-      - name: Upload release APK
+      - name: Upload release APK (arm64-v8a)
         if: steps.release_key.outputs.release_ready == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: app-release
-          path: app/build/outputs/apk/release/*.apk
+          name: app-release-arm64-v8a
+          path: app/build/outputs/apk/release/app-arm64-v8a-release.apk
+          if-no-files-found: error
+
+      - name: Upload release APK (armeabi-v7a)
+        if: steps.release_key.outputs.release_ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-armeabi-v7a
+          path: app/build/outputs/apk/release/app-armeabi-v7a-release.apk
           if-no-files-found: error

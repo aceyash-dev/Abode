@@ -85,9 +85,13 @@ jobs:
           stamp="$(date -u +%Y%m%d)"
           sha="$(git rev-parse --short HEAD)"
           mkdir -p out
-          cp app/build/outputs/apk/debug/*.apk "out/abode-nightly-${stamp}-${sha}.apk"
+          # One file per ABI: a glob copy would fail outright now that the build
+          # produces two APKs, and a single nightly for both is the fat build.
+          cp app/build/outputs/apk/debug/app-arm64-v8a-debug.apk \
+            "out/abode-nightly-${stamp}-${sha}-arm64-v8a.apk"
+          cp app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk \
+            "out/abode-nightly-${stamp}-${sha}-armeabi-v7a.apk"
           echo "TAG=nightly-${stamp}" >> "$GITHUB_ENV"
-          echo "APK=out/abode-nightly-${stamp}-${sha}.apk" >> "$GITHUB_ENV"
           echo "STAMP=${stamp}" >> "$GITHUB_ENV"
 
       # The artefact is kept either way, so a failed publish still leaves the
@@ -116,7 +120,7 @@ jobs:
           note="$note"$'\n\n'"Commit message: ${subject}"
           note="$note"$'\n\n'"Built by [run ${GITHUB_RUN_NUMBER}](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) on $(date -u +%Y-%m-%d) UTC, after every ${NIGHTLY_EVERY} commits."
           note="$note"$'\n\n'"Debug-signed: uninstall any Play build before installing this one. Not a stable release: this is whatever main looked like when the build ran."
-          gh release create "$TAG" "$APK" \
+          gh release create "$TAG" out/*.apk \
             --title "Nightly $STAMP · ${GITHUB_SHA:0:7}" \
             --target "$GITHUB_SHA" \
             --prerelease \

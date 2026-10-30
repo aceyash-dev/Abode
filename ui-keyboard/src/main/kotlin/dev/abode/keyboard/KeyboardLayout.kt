@@ -218,12 +218,16 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
                 rows += row.map { glyph -> Key(glyph, KeyKind.CHARACTER, output = glyph) }
             }
 
+            // The current category is drawn lit, the way the shift key shows its
+            // state. Unlit, the tab row reads as another row of emoji rather than
+            // as the thing that switches categories.
             rows += catalog.mapIndexed { index, category ->
                 Key(
                     label = category.tabGlyph,
                     kind = KeyKind.EMOJI_TAB,
                     output = index.toString(),
                     widthWeight = 1f,
+                    active = index == current,
                 )
             }
 
