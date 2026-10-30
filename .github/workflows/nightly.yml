@@ -1,23 +1,25 @@
 name: Nightly
 
-# One build a day from main, published as a prerelease so it never looks like a
-# stable download. The point is a runnable APK every morning without anyone
-# tagging anything.
+# A prerelease APK built from main every few commits, so a runnable build exists
+# without anyone tagging anything. It runs on pushes, not on a clock: a quiet day
+# builds nothing, a busy one builds at most once per NIGHTLY_EVERY commits.
 on:
-  schedule:
-    # 18:30 UTC — 00:00 IST, so the nightly lands at the start of the day it is
-    # named for in the timezone most of these users are in.
-    - cron: '30 18 * * *'
+  push:
+    branches: [main]
   workflow_dispatch:
 
 # Needed to create the release and the tag.
 permissions:
   contents: write
 
-# A slow night must not stack up behind the next one.
+# A slow build must not stack up behind the next push.
 concurrency:
   group: nightly
   cancel-in-progress: true
+
+env:
+  # Build after this many commits since the last nightly. Change it here only.
+  NIGHTLY_EVERY: 4
 
 jobs:
   nightly:
@@ -28,24 +30,56 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Counts commits since the commit the newest nightly was built from. A manual
+      # run always builds; so does a first run, or a history rewrite that makes the
+      # old commit unreachable.
+      - name: Decide whether to build
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -uo pipefail
+          last="$(gh api "repos/$GITHUB_REPOSITORY/releases" \
+            --jq '[.[] | select(.tag_name | startswith("nightly-"))][0].target_commitish // empty' 2>/dev/null)"
+          build=true
+          count=0
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            reason="manual run"
+          elif [ -z "$last" ] || ! git cat-file -e "${last}^{commit}" 2>/dev/null \
+              || ! git merge-base --is-ancestor "$last" HEAD; then
+            reason="no usable previous nightly"
+          else
+            count="$(git rev-list --count "$last..HEAD")"
+            reason="$count commits since the last nightly"
+            if [ "$count" -lt "$NIGHTLY_EVERY" ]; then build=false; fi
+          fi
+          echo "$reason; build=$build"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+
       - name: Set up JDK 17
+        if: steps.gate.outputs.build == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Gradle
+        if: steps.gate.outputs.build == 'true'
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
 
       - name: Unit tests
+        if: steps.gate.outputs.build == 'true'
         run: gradle :engine-text:testDebugUnitTest -PgitSha=${{ github.sha }} --stacktrace
 
       - name: Build debug APK
+        if: steps.gate.outputs.build == 'true'
         run: gradle :app:assembleDebug -PgitSha=${{ github.sha }} --stacktrace
 
       - name: Name the artefact
+        if: steps.gate.outputs.build == 'true'
         run: |
           set -euo pipefail
           stamp="$(date -u +%Y%m%d)"
@@ -59,6 +93,7 @@ jobs:
       # The artefact is kept either way, so a failed publish still leaves the
       # build downloadable from the run.
       - name: Upload build artefact
+        if: steps.gate.outputs.build == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: abode-nightly
@@ -67,18 +102,19 @@ jobs:
           retention-days: 14
 
       - name: Publish prerelease
+        if: steps.gate.outputs.build == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          # Re-running a night replaces that night's release rather than failing
-          # on an existing tag.
+          # Re-running a day replaces that day's release rather than failing on an
+          # existing tag. The new release is what the next gate measures from.
           gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
           subject="$(git log -1 --format=%s "$GITHUB_SHA")"
           note="Built from commit [${GITHUB_SHA:0:7}](https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})."
           note="$note Full SHA: \`${GITHUB_SHA}\`"
           note="$note"$'\n\n'"Commit message: ${subject}"
-          note="$note"$'\n\n'"Built by [run ${GITHUB_RUN_NUMBER}](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) on $(date -u +%Y-%m-%d) UTC."
+          note="$note"$'\n\n'"Built by [run ${GITHUB_RUN_NUMBER}](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) on $(date -u +%Y-%m-%d) UTC, after every ${NIGHTLY_EVERY} commits."
           note="$note"$'\n\n'"Debug-signed: uninstall any Play build before installing this one. Not a stable release: this is whatever main looked like when the build ran."
           gh release create "$TAG" "$APK" \
             --title "Nightly $STAMP · ${GITHUB_SHA:0:7}" \
