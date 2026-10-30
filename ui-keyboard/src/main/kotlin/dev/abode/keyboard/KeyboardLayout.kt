@@ -229,12 +229,27 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
          * grid draws a still for each and inserts the link; the still is looked up
          * by URL, so the layout carries only strings.
          */
-        fun gifResults(urls: List<String>): KeyboardLayout {
+        fun gifResults(
+            urls: List<String>,
+            categories: List<String> = emptyList(),
+            selected: Int = 0,
+        ): KeyboardLayout {
             val rows = mutableListOf<List<Key>>()
             urls.chunked(GIF_PER_ROW).forEach { row ->
                 rows += row.map { url ->
                     Key("", KeyKind.GIF_RESULT, output = url, widthWeight = 1f)
                 }
+            }
+            if (categories.isNotEmpty()) {
+                rows += categories.mapIndexed { index, glyph ->
+                    Key(
+                        label = glyph,
+                        kind = KeyKind.GIF_CATEGORY,
+                        output = index.toString(),
+                        widthWeight = 1f,
+                        active = index == selected,
+                    )
+                } + Key("\u2328", KeyKind.GIF_TYPE, widthWeight = 1f)
             }
             rows += listOf(
                 Key("Back", KeyKind.GIF, widthWeight = 1.6f),

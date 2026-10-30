@@ -34,6 +34,23 @@ object GiphyClient {
      */
     const val GIFS_PER_SEARCH = 12
 
+    /**
+     * The tabs above the GIF grid: a glyph, and the query behind it.
+     *
+     * A null query is trending, which is what the panel opens on — a GIF picker
+     * that starts empty and waits for a word is a picker nobody opens twice.
+     */
+    val CATEGORIES: List<Pair<String, String?>> = listOf(
+        "\uD83D\uDD25" to null,
+        "\uD83D\uDE02" to "reactions",
+        "\uD83D\uDC36" to "animals",
+        "\u2764\uFE0F" to "love",
+        "\uD83C\uDF54" to "food",
+        "\uD83C\uDFAC" to "movies",
+        "\u26BD" to "sports",
+        "\u2728" to "wow",
+    )
+
     suspend fun search(query: String, limit: Int = GIFS_PER_SEARCH): List<GifResult> =
         withContext(Dispatchers.IO) {
             val key = BuildConfig.GIPHY_API_KEY
@@ -67,6 +84,33 @@ object GiphyClient {
                 connection.disconnect()
             }
         }
+
+    /** What Giphy is showing everyone, for the panel's first tab. One request. */
+    suspend fun trending(limit: Int = GIFS_PER_SEARCH): List<GifResult> = withContext(Dispatchers.IO) {
+        val key = BuildConfig.GIPHY_API_KEY
+        if (key.isBlank()) throw ChymeException("No Giphy key in this build")
+        val url = URL(
+            "https://api.giphy.com/v1/gifs/trending" +
+                "?api_key=$key&limit=$limit&rating=pg-13",
+        )
+        val connection = runCatching { url.openConnection() as HttpURLConnection }.getOrElse {
+            throw ChymeException("Could not reach Giphy")
+        }
+        try {
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 10_000
+            connection.readTimeout = 15_000
+            val code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            if (code !in 200..299) throw ChymeException("Giphy returned HTTP $code")
+            parse(text)
+        } catch (e: IOException) {
+            throw ChymeException(e.message ?: "Network error")
+        } finally {
+            connection.disconnect()
+        }
+    }
 
     private fun parse(raw: String): List<GifResult> {
         val data = runCatching { JSONObject(raw).optJSONArray("data") }.getOrNull()

@@ -139,6 +139,9 @@ class AbodeInputMethodService : InputMethodService(),
     /** True while the grid is showing the results of the last search. */
     private var gifResultsMode = false
 
+    /** Which Giphy tab the grid is showing: 0 is trending. */
+    private var gifCategory = 0
+
     /**
      * Thumbnails, held by media URL.
      *
@@ -575,7 +578,9 @@ class AbodeInputMethodService : InputMethodService(),
             KeyKind.EMOJI_TAB -> selectEmojiCategory(key.output.toIntOrNull() ?: 0)
             KeyKind.EMOJI_MORE -> nextEmojiPage()
             KeyKind.EMOJI_SEARCH -> beginEmojiSearch()
-            KeyKind.GIF -> if (gifResultsMode) endGifSearch() else beginGifSearch()
+            KeyKind.GIF -> if (gifResultsMode) endGifSearch() else openGifPanel(0)
+            KeyKind.GIF_CATEGORY -> openGifPanel(key.output.toIntOrNull() ?: 0)
+            KeyKind.GIF_TYPE -> beginGifSearch()
             KeyKind.GIF_RESULT -> pickGifByUrl(key.output)
 
             // TODO(M4): the AI sheet. The rest are handled elsewhere or are inert.
@@ -871,7 +876,11 @@ class AbodeInputMethodService : InputMethodService(),
         // you moved between them.
         grid.visibleContentRows = 3
         val base = when {
-            gifResultsMode -> KeyboardLayout.gifResults(currentGifs.map { it.url })
+            gifResultsMode -> KeyboardLayout.gifResults(
+                urls = currentGifs.map { it.url },
+                categories = GiphyClient.CATEGORIES.map { it.first },
+                selected = gifCategory,
+            )
             gifSearch -> KeyboardLayout.qwerty(shifted = false, numberRow = true, capsLock = false, enterLabel = enterLabel())
             clipboardMode -> KeyboardLayout.clipboard(
                 links = clipHistory.filter { isLink(it) },
@@ -1041,6 +1050,44 @@ class AbodeInputMethodService : InputMethodService(),
         if (gifQuery.isEmpty()) endGifSearch() else {
             gifQuery = gifQuery.dropLast(1)
             showGifQuery()
+        }
+    }
+
+    /**
+     * Opens the panel on a category, with exactly one request.
+     *
+     * Tab zero is trending; the rest are searches behind a glyph. Each tap is a
+     * deliberate choice, so each costs one call — nothing here runs per keystroke,
+     * and scrolling never asks Giphy anything.
+     */
+    private fun openGifPanel(index: Int) {
+        val category = index.coerceIn(0, GiphyClient.CATEGORIES.lastIndex)
+        gifCategory = category
+        val query = GiphyClient.CATEGORIES[category].second
+        if (::strip.isInitialized) {
+            strip.suggestions = emptyList()
+            strip.status = "Loading GIFs\u2026"
+        }
+        gifJob?.cancel()
+        gifJob = scope.launch {
+            runCatching {
+                if (query == null) GiphyClient.trending() else GiphyClient.search(query)
+            }
+                .onSuccess { results ->
+                    currentGifs = results
+                    gifResultsMode = results.isNotEmpty()
+                    gifSearch = false
+                    if (::strip.isInitialized) {
+                        strip.status = if (results.isEmpty()) "No GIFs right now" else ""
+                    }
+                    applyLayout()
+                    loadGifStills(results)
+                }
+                .onFailure { error ->
+                    if (::strip.isInitialized) {
+                        strip.status = error.message ?: "Giphy search failed"
+                    }
+                }
         }
     }
 

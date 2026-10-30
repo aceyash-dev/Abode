@@ -66,6 +66,12 @@ enum class KeyKind {
     /** One result in the GIF grid. [Key.output] is the media URL to insert. */
     GIF_RESULT,
 
+    /** A Giphy category tab. [Key.output] is its index. */
+    GIF_CATEGORY,
+
+    /** Leaves the categories and types a search instead. */
+    GIF_TYPE,
+
     /** Draws nothing and does nothing: the gap in the iOS-style bottom strip. */
     SPACER,
 }
