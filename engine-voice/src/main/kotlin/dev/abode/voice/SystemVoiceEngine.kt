@@ -44,7 +44,10 @@ class SystemVoiceEngine(private val context: Context) : VoiceEngine {
 
         override fun onBeginningOfSpeech() = Unit
 
-        override fun onRmsChanged(rmsdB: Float) = Unit
+        override fun onRmsChanged(rmsdB: Float) {
+            // Speech sits roughly between -2 and 10 dB; map that onto 0..1.
+            _events.tryEmit(VoiceEvent.Level(((rmsdB + 2f) / 12f).coerceIn(0f, 1f)))
+        }
 
         override fun onBufferReceived(buffer: ByteArray?) = Unit
 

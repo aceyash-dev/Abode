@@ -24,6 +24,9 @@ sealed interface VoiceEvent {
     data class Partial(val text: String) : VoiceEvent
     data class Final(val text: String) : VoiceEvent
     data class Failed(val code: Int, val message: String) : VoiceEvent
+
+    /** Microphone level, 0..1, for the visualiser. */
+    data class Level(val value: Float) : VoiceEvent
 }
 
 interface VoiceEngine {

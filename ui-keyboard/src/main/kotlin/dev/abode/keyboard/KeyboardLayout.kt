@@ -256,6 +256,7 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
                     Key("Undo", KeyKind.UNDO, widthWeight = 1.4f),
                     Key("Speak", KeyKind.SPEAK, widthWeight = 1.4f),
                     Key("Clip", KeyKind.CLIPBOARD, widthWeight = 1.4f),
+                    Key("Google", KeyKind.SEARCH_WEB, widthWeight = 1.6f),
                 ),
                 listOf(
                     Key("Done", KeyKind.EDIT, widthWeight = 2.4f),

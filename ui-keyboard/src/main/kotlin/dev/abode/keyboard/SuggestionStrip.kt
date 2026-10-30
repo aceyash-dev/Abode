@@ -41,6 +41,9 @@ class SuggestionStrip @JvmOverloads constructor(
 
         /** The Chyme button, beside the toolbar button, was tapped. */
         fun onChyme() {}
+
+        /** The cancel control in the dictation visualiser was tapped. */
+        fun onCancelVoice() {}
     }
 
     /** Shows the toolbar button at the left edge; the slots move right to make room. */
@@ -63,6 +66,25 @@ class SuggestionStrip @JvmOverloads constructor(
 
     private var pressedButton = -1
     private val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    /** While dictating, the strip shows an accent visualiser instead of suggestions. */
+    var visualizer = false
+        set(value) {
+            if (field == value) return
+            field = value
+            invalidate()
+        }
+
+    /** Latest microphone level, 0..1. The bars ease toward it rather than jump. */
+    var level = 0f
+        set(value) {
+            field = value.coerceIn(0f, 1f)
+            if (visualizer) invalidate()
+        }
+    private var displayLevel = 0f
+    private var animPhase = 0f
+    private var cancelPressed = false
+    private val vizRect = RectF()
     private var toolbarRendered: VectorPaths.Rendered? = null
 
     private val buttonCount: Int
@@ -220,7 +242,48 @@ class SuggestionStrip @JvmOverloads constructor(
         buildSlots()
     }
 
+    /**
+     * Nine accent bars that rise and fall with the voice, and a cancel control
+     * at the right. The bars ease toward the level and keep moving between
+     * updates, so the strip feels alive in a quiet moment.
+     */
+    private fun drawVisualizer(canvas: Canvas) {
+        displayLevel += (level - displayLevel) * 0.35f
+        animPhase += 0.22f
+        val cancelWidth = 56f * density
+        val barWidth = 4f * density
+        val spacing = 6f * density
+        val bars = 9
+        val total = bars * barWidth + (bars - 1) * spacing
+        val startX = (width - cancelWidth) / 2f - total / 2f
+        val midY = height / 2f
+        val maxHeight = height * 0.7f
+        for (i in 0 until bars) {
+            val shape = 0.45f + 0.55f * Math.abs(Math.sin((animPhase + i * 0.9).toDouble())).toFloat()
+            val h = (maxHeight * displayLevel * shape).coerceAtLeast(4f * density)
+            val x = startX + i * (barWidth + spacing)
+            vizRect.set(x, midY - h / 2f, x + barWidth, midY + h / 2f)
+            canvas.drawRoundRect(vizRect, barWidth / 2f, barWidth / 2f, accentPaint)
+        }
+
+        // Cancel: an X inside a round slot, in the label colour.
+        val cx = width - cancelWidth / 2f
+        val r = 14f * density
+        vizRect.set(cx - r, midY - r, cx + r, midY + r)
+        canvas.drawRoundRect(vizRect, r, r, slotPaint)
+        iconPaint.style = Paint.Style.STROKE
+        iconPaint.strokeWidth = 2f * density
+        val d = r * 0.42f
+        canvas.drawLine(cx - d, midY - d, cx + d, midY + d, iconPaint)
+        canvas.drawLine(cx - d, midY + d, cx + d, midY - d, iconPaint)
+        postInvalidateOnAnimation()
+    }
+
     override fun onDraw(canvas: Canvas) {
+        if (visualizer) {
+            drawVisualizer(canvas)
+            return
+        }
         if (slots.isEmpty()) buildSlots()
         val items = labels()
         // The first suggestion is the one the keyboard expects you to want, so it
@@ -327,6 +390,10 @@ class SuggestionStrip @JvmOverloads constructor(
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                if (visualizer) {
+                    cancelPressed = event.x > width - 56f * density
+                    return true
+                }
                 val button = buttonAt(event.x)
                 if (button >= 0) {
                     pressedButton = button
@@ -349,6 +416,13 @@ class SuggestionStrip @JvmOverloads constructor(
             }
 
             MotionEvent.ACTION_UP -> {
+                if (visualizer) {
+                    val cancel = cancelPressed
+                    cancelPressed = false
+                    if (cancel && event.x > width - 56f * density) listener?.onCancelVoice()
+                    performClick()
+                    return true
+                }
                 if (pressedButton >= 0) {
                     val button = pressedButton
                     pressedButton = -1

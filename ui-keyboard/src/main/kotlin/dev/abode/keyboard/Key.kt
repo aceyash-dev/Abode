@@ -36,6 +36,9 @@ enum class KeyKind {
     /** Moves to the next page of the current emoji category, wrapping. */
     EMOJI_MORE,
 
+    /** Searches the web for the selected text, or the word before the cursor. */
+    SEARCH_WEB,
+
     /** Opens emoji search: letters filter the emoji, a tap on one inserts it. */
     EMOJI_SEARCH,
 
