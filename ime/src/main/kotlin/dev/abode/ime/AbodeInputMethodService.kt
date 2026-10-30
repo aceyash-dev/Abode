@@ -30,6 +30,7 @@ import dev.abode.ai.ChymePrompts
 import dev.abode.ai.ChymeStore
 import dev.abode.ai.GifResult
 import dev.abode.ai.GiphyClient
+import dev.abode.ai.SearchClient
 import dev.abode.core.common.AbodeDispatchers
 import dev.abode.core.common.AbodeLog
 import dev.abode.core.common.theme.KeyboardTheme
@@ -109,6 +110,8 @@ class AbodeInputMethodService : InputMethodService(),
     private lateinit var grid: KeyGridView
     private lateinit var strip: SuggestionStrip
     private lateinit var chymeCard: ChymeCard
+    private lateinit var searchCard: SearchCard
+    private var searchQuery = ""
     private var chymeOpen = false
 
     /** The theme as stored, before the system's night mode and wallpaper are applied. */
@@ -383,9 +386,18 @@ class AbodeInputMethodService : InputMethodService(),
                 }
             }
 
-            // A frame rather than a column: the Chyme card floats over the keys
-            // instead of pushing them, so the text being rewritten stays visible
-            // behind it.
+            searchCard = SearchCard(this).apply {
+                visibility = View.GONE
+                listener = object : SearchCard.Listener {
+                    override fun onInsert(url: String) = insertSearchHit(url)
+                    override fun onOpenBrowser() = openBrowserSearch()
+                    override fun onOpen(url: String) = openUrl(url)
+                    override fun onClose() = closeSearchCard()
+                }
+            }
+
+            // A frame rather than a column: the cards float over the keys instead
+            // of pushing them, so the text behind stays visible.
             root = FrameLayout(this).apply {
                 addView(
                     column,
@@ -394,17 +406,16 @@ class AbodeInputMethodService : InputMethodService(),
                         FrameLayout.LayoutParams.WRAP_CONTENT,
                     ),
                 )
-                addView(
-                    chymeCard,
-                    FrameLayout.LayoutParams(
-                        minOf(dp(320), resources.displayMetrics.widthPixels - dp(16)),
-                        FrameLayout.LayoutParams.WRAP_CONTENT,
-                        Gravity.TOP or Gravity.START,
-                    ).apply {
-                        leftMargin = dp(8)
-                        topMargin = dp(6)
-                    },
-                )
+                val cardParams = FrameLayout.LayoutParams(
+                    minOf(dp(320), resources.displayMetrics.widthPixels - dp(16)),
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP or Gravity.START,
+                ).apply {
+                    leftMargin = dp(8)
+                    topMargin = dp(6)
+                }
+                addView(chymeCard, cardParams)
+                addView(searchCard, FrameLayout.LayoutParams(cardParams))
             }
 
             applyTheme(currentTheme)
@@ -848,6 +859,7 @@ class AbodeInputMethodService : InputMethodService(),
         if (::root.isInitialized) root.background = trayBackground(themed.background)
         if (::strip.isInitialized) strip.applyTheme(themed)
         if (::chymeCard.isInitialized) chymeCard.applyTheme(themed)
+        if (::searchCard.isInitialized) searchCard.applyTheme(themed)
     }
 
     /** Selects the word before the cursor, so Copy and Cut act on it. */
@@ -1572,12 +1584,47 @@ class AbodeInputMethodService : InputMethodService(),
             setStatus("Nothing to search")
             return
         }
-        val uri = android.net.Uri.parse("https://www.google.com/search?q=" + android.net.Uri.encode(query))
-        try {
-            startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        } catch (e: Exception) {
-            setStatus("No browser to search with")
+        if (!::searchCard.isInitialized) return
+        searchQuery = query
+        closeChyme()
+        searchCard.visibility = View.VISIBLE
+        searchCard.showQuery(query)
+        scope.launch {
+            runCatching { SearchClient.answers(query) }
+                .onSuccess { hits -> searchCard.showHits(hits) }
+                .onFailure { error -> searchCard.showError(error.message ?: "Search failed") }
         }
+    }
+
+    private fun closeSearchCard() {
+        if (::searchCard.isInitialized) searchCard.visibility = View.GONE
+    }
+
+    /** A tapped result: the keyboard's job is inserting the link, not opening it. */
+    private fun insertSearchHit(url: String) {
+        commit(url)
+        closeSearchCard()
+    }
+
+    /** Long-pressing a result opens it, for when reading it is the point. */
+    private fun openUrl(url: String) {
+        runCatching {
+            startActivity(
+                Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }.onFailure { setStatus("No browser for that link") }
+        closeSearchCard()
+    }
+
+    /** The escape hatch: the full web, for what an instant answer cannot give. */
+    private fun openBrowserSearch() {
+        if (searchQuery.isBlank()) return
+        val uri = android.net.Uri.parse("https://www.google.com/search?q=" + android.net.Uri.encode(searchQuery))
+        runCatching {
+            startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.onFailure { setStatus("No browser to search with") }
+        closeSearchCard()
     }
 
     private fun stopListening() {
