@@ -1,10 +1,7 @@
 package dev.abode.core.ui
 
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -29,22 +26,22 @@ private val Dark = darkColorScheme(
 )
 
 /**
- * The app's theme, on Material 3 Expressive.
+ * The app's theme.
  *
- * Expressive is a motion and shape system as much as a colour one: the theme
- * brings spring-based motion, which is what makes a screen change feel like it
- * moved rather than cut. The keyboard itself draws its own Canvas and does not
- * use Compose, so none of this reaches it — this is the app's surface only.
+ * On Material 3 1.4.0, which is what Compose BOM 2026.05.00 pins — the expressive
+ * APIs (`MaterialExpressiveTheme`, `MotionScheme`) exist there but are still
+ * internal, and they only became public in 1.5.0, which pulls Compose 1.12 and
+ * needs compileSdk 37. This project is on AGP 8.9.1 and compileSdk 36, so the
+ * theme stays on `MaterialTheme` and the motion is done with the animation APIs,
+ * which are stable in every version.
  */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun AbodeTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit,
 ) {
-    MaterialExpressiveTheme(
+    MaterialTheme(
         colorScheme = if (darkTheme) Dark else Light,
-        motionScheme = MotionScheme.expressive(),
         content = content,
     )
 }
