@@ -22,6 +22,7 @@ enum class KeyKind {
     COPY,
     PASTE,
     UNDO,
+    SPEAK,
 }
 
 /**

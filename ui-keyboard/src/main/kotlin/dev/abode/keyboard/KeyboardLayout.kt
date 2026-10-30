@@ -102,7 +102,8 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
                     Key("Cut", KeyKind.CUT, widthWeight = 1.6f),
                     Key("Copy", KeyKind.COPY, widthWeight = 1.6f),
                     Key("Paste", KeyKind.PASTE, widthWeight = 1.6f),
-                    Key("Undo", KeyKind.UNDO, widthWeight = 1.6f),
+                    Key("Undo", KeyKind.UNDO, widthWeight = 1.4f),
+                    Key("Speak", KeyKind.SPEAK, widthWeight = 1.6f),
                 ),
                 listOf(
                     Key("Done", KeyKind.EDIT, widthWeight = 2.4f),

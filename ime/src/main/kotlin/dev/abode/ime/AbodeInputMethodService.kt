@@ -32,6 +32,7 @@ import dev.abode.text.DictionaryLoader
 import dev.abode.text.DevanagariTransliterator
 import dev.abode.text.GlideDecoder
 import dev.abode.text.SuggestionEngine
+import dev.abode.voice.GoogleSpeaker
 import dev.abode.voice.SystemVoiceEngine
 import dev.abode.voice.VoiceEvent
 import java.util.Locale
@@ -91,6 +92,7 @@ class AbodeInputMethodService : InputMethodService(),
     private var sentenceEnded = true
 
     private var voiceEngine: SystemVoiceEngine? = null
+    private var speaker: GoogleSpeaker? = null
     private var listening = false
 
     private var shifted = false
@@ -132,6 +134,8 @@ class AbodeInputMethodService : InputMethodService(),
                 }
             }
         }
+
+        speaker = GoogleSpeaker(this)
 
         val voice = SystemVoiceEngine(this)
         voiceEngine = voice
@@ -219,6 +223,9 @@ class AbodeInputMethodService : InputMethodService(),
 
     override fun onFinishInputView(finishingInput: Boolean) {
         super.onFinishInputView(finishingInput)
+        // Read-back must not outlive the keyboard, or it keeps talking to a
+        // screen the user has already left.
+        speaker?.stop()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
         stopListening()
     }
@@ -228,6 +235,8 @@ class AbodeInputMethodService : InputMethodService(),
     override fun onDestroy() {
         voiceEngine?.release()
         voiceEngine = null
+        speaker?.release()
+        speaker = null
         scope.cancel()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         store.clear()
@@ -280,6 +289,7 @@ class AbodeInputMethodService : InputMethodService(),
             KeyKind.COPY -> contextAction(android.R.id.copy)
             KeyKind.PASTE -> contextAction(android.R.id.paste)
             KeyKind.UNDO -> sendUndo()
+            KeyKind.SPEAK -> speakField()
 
             // TODO(M2/M4): clipboard panel and the AI sheet.
             KeyKind.DELETE, KeyKind.CLIPBOARD, KeyKind.AI -> Unit
@@ -493,6 +503,33 @@ class AbodeInputMethodService : InputMethodService(),
     private fun contextAction(action: Int) {
         val ic = currentInputConnection ?: return
         ic.performContextMenuAction(action)
+    }
+
+    /**
+     * Reads back what is selected, or the last sentence before the cursor.
+     *
+     * A sentence rather than the whole field: hearing a paragraph back to check
+     * a comma is worse than not hearing it.
+     */
+    private fun speakField() {
+        val engine = speaker ?: return
+        val ic = currentInputConnection ?: return
+
+        val selected = ic.getSelectedText(0)?.toString().orEmpty()
+        val text = if (selected.isNotBlank()) {
+            selected
+        } else {
+            val before = ic.getTextBeforeCursor(400, 0)?.toString().orEmpty()
+            val cut = before.takeLastWhile { it != '.' && it != '!' && it != '?' && it != '\n' }
+            cut.ifBlank { before.takeLast(200) }
+        }
+
+        if (text.isBlank()) {
+            setStatus("Nothing to read")
+            return
+        }
+        engine.speak(text)
+        setStatus(if (engine.speaking) "Reading\u2026" else "")
     }
 
     /** Undo has no InputConnection API; the convention every editor understands is Ctrl+Z. */

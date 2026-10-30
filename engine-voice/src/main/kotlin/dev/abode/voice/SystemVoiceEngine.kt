@@ -3,6 +3,7 @@ package dev.abode.voice
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -88,6 +89,30 @@ class SystemVoiceEngine(private val context: Context) : VoiceEngine {
         override fun onEvent(eventType: Int, params: Bundle?) = Unit
     }
 
+    /**
+     * Google's own recognition service, when it is installed.
+     *
+     * Asking for it by component rather than taking whatever the system defaults
+     * to is the difference between dictating with Google and dictating with an
+     * OEM service that may not have a model for the language at all. If the
+     * component is absent this falls back to the default recogniser.
+     */
+    private fun createRecognizer(): SpeechRecognizer {
+        val google = ComponentName(GOOGLE_APP, GOOGLE_RECOGNISER)
+        val present = runCatching {
+            context.packageManager.resolveService(
+                Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).setComponent(google),
+                0,
+            ) != null
+        }.getOrDefault(false)
+
+        if (present) {
+            runCatching { SpeechRecognizer.createSpeechRecognizer(context, google) }
+                .onSuccess { return it }
+        }
+        return SpeechRecognizer.createSpeechRecognizer(context)
+    }
+
     override fun isAvailable(): Boolean =
         runCatching { SpeechRecognizer.isRecognitionAvailable(context) }.getOrDefault(false)
 
@@ -105,7 +130,7 @@ class SystemVoiceEngine(private val context: Context) : VoiceEngine {
             return
         }
 
-        val active = recognizer ?: SpeechRecognizer.createSpeechRecognizer(context).also {
+        val active = recognizer ?: createRecognizer().also {
             it.setRecognitionListener(listener)
             recognizer = it
         }
@@ -160,6 +185,9 @@ class SystemVoiceEngine(private val context: Context) : VoiceEngine {
 
     private companion object {
         const val ERROR_UNAVAILABLE = -100
+        const val GOOGLE_APP = "com.google.android.googlequicksearchbox"
+        const val GOOGLE_RECOGNISER =
+            "com.google.android.voicesearch.serviceapi.GoogleRecognitionService"
         const val ERROR_LANGUAGE_NOT_SUPPORTED = 12
         const val ERROR_LANGUAGE_UNAVAILABLE = 13
     }

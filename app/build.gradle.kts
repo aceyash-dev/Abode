@@ -37,8 +37,8 @@ android {
         val gitSha = (project.findProperty("gitSha") as String?)?.take(7) ?: "dev"
         buildConfigField("String", "GIT_SHA", "\"$gitSha\"")
 
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
     }
 
     signingConfigs {
