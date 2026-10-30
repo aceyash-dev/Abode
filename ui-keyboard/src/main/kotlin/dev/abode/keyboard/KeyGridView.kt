@@ -18,9 +18,10 @@ import compose.icons.TablerIcons
 import compose.icons.tablericons.Backspace
 import compose.icons.tablericons.Clipboard
 import compose.icons.tablericons.CornerDownLeft
-import compose.icons.tablericons.World
+import compose.icons.tablericons.Language
 import compose.icons.tablericons.Microphone
 import compose.icons.tablericons.Search
+import compose.icons.tablericons.MoodSmile
 import dev.abode.core.common.theme.KeyShape
 import dev.abode.core.common.theme.KeyboardTheme
 import java.io.File
@@ -79,24 +80,6 @@ class KeyGridView @JvmOverloads constructor(
 
         /** Fires on lift after a swipe across the keys. */
         fun onGlide(keys: List<Key>)
-
-        /** A sideways swipe on a paged grid (the emoji page): -1 back, +1 forward. */
-        fun onPage(step: Int) {}
-    }
-
-    /** When true, a sideways swipe turns pages instead of gliding. */
-    var pagingEnabled = false
-    private var pageSwiped = false
-    private val pageSlop get() = 24f * resources.displayMetrics.density
-    private val fitPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-
-    /** Shrinks [base] so [text] fits [maxWidth]; kaomoji are long and cells are not. */
-    private fun fitted(base: Paint, text: String, maxWidth: Float): Paint {
-        val w = base.measureText(text)
-        if (w <= maxWidth || w <= 0f) return base
-        fitPaint.set(base)
-        fitPaint.textSize = base.textSize * maxWidth / w
-        return fitPaint
     }
 
     var listener: Listener? = null
@@ -313,12 +296,12 @@ class KeyGridView @JvmOverloads constructor(
     private fun iconFor(key: Key): ImageVector? = when (key.kind) {
         KeyKind.DELETE -> TablerIcons.Backspace
         KeyKind.ENTER -> TablerIcons.CornerDownLeft
-        KeyKind.GLOBE -> TablerIcons.World
+        KeyKind.GLOBE -> TablerIcons.Language
         KeyKind.VOICE -> TablerIcons.Microphone
         KeyKind.CLIPBOARD -> TablerIcons.Clipboard
         KeyKind.EMOJI_SEARCH -> TablerIcons.Search
         // The "ABC" that returns from emoji stays a word: it names the page it goes to.
-        KeyKind.EMOJI -> null
+        KeyKind.EMOJI -> if (key.label == "ABC") null else TablerIcons.MoodSmile
         else -> null
     }
 
@@ -404,8 +387,7 @@ class KeyGridView @JvmOverloads constructor(
             // The test is the code point, not the label's length: a letter is never
             // an emoji, and the glyph keys that carry one are named kinds.
             val glyph = keys[i].kind in GLYPH_KINDS && label.codePointAt(0) > 0x2000
-            val base = if (glyph) emojiPaint else labelPaint
-            val paint = fitted(base, label, r.width() - 6f * resources.displayMetrics.density)
+            val paint = if (glyph) emojiPaint else labelPaint
             val baseline = r.centerY() - (paint.descent() + paint.ascent()) / 2f
             canvas.drawText(label, r.centerX(), baseline, paint)
 
@@ -468,7 +450,6 @@ class KeyGridView @JvmOverloads constructor(
                 downY = event.y
                 longPressFired = false
                 gliding = false
-                pageSwiped = false
                 glideKeys.clear()
                 glideTrail.reset()
                 glideTrail.moveTo(event.x, event.y)
@@ -492,22 +473,6 @@ class KeyGridView @JvmOverloads constructor(
                     updatePopupSelection(event.x, event.y)
                     return true
                 }
-
-                if (pagingEnabled && !pageSwiped) {
-                    val dx = event.x - downX
-                    val dy = event.y - downY
-                    if (Math.abs(dx) > pageSlop && Math.abs(dx) > 2f * Math.abs(dy)) {
-                        pageSwiped = true
-                        cancelRepeat()
-                        handler.removeCallbacks(longPress)
-                        if (pressedIndex >= 0) {
-                            invalidateKey(pressedIndex)
-                            pressedIndex = -1
-                        }
-                        listener?.onPage(if (dx < 0) 1 else -1)
-                    }
-                }
-                if (pageSwiped) return true
 
                 if (!longPressFired) {
                     val moved = Math.abs(event.x - downX) > touchSlop ||
@@ -552,13 +517,6 @@ class KeyGridView @JvmOverloads constructor(
             MotionEvent.ACTION_UP -> {
                 handler.removeCallbacks(longPress)
                 cancelRepeat()
-
-                if (pageSwiped) {
-                    pageSwiped = false
-                    pressedIndex = -1
-                    invalidate()
-                    return true
-                }
 
                 if (popupKeys.isNotEmpty()) {
                     updatePopupSelection(event.x, event.y)
