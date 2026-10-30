@@ -318,7 +318,7 @@ class AbodeInputMethodService : InputMethodService(),
      */
     private fun handleSpace() {
         finishTransliteration()
-        if (lastCommitWasSpace) {
+        if (lastCommitWasSpace && currentTheme.doubleSpacePeriod) {
             val ic = currentInputConnection ?: return
             ic.beginBatchEdit()
             ic.deleteSurroundingText(1, 0)

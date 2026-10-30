@@ -290,6 +290,7 @@ class KeyGridView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         val count = rects.size
         for (i in 0 until count) {
+            if (keys[i].kind == KeyKind.SPACER) continue
             val r = rects[i]
             canvas.drawPath(keyPaths[i], if (i == pressedIndex) pressedPaint else keyPaint)
 
@@ -538,7 +539,7 @@ class KeyGridView @JvmOverloads constructor(
         if (previous >= 0) invalidateKey(previous)
         if (index >= 0) {
             invalidateKey(index)
-            performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            if (theme.haptics) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             listener?.onKeyDown(keys[index])
         }
     }

@@ -2,6 +2,7 @@ package dev.abode.data
 
 import android.content.Context
 import androidx.datastore.preferences.core.MutablePreferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
@@ -39,6 +40,9 @@ class ThemePreferences(private val context: Context) {
             keyGapDp = prefs[KEY_GAP] ?: defaults.keyGapDp,
             rowHeightDp = prefs[KEY_ROW_HEIGHT] ?: defaults.rowHeightDp,
             autocorrectSensitivity = prefs[KEY_SENSITIVITY] ?: defaults.autocorrectSensitivity,
+            haptics = prefs[KEY_HAPTICS] ?: defaults.haptics,
+            keySound = prefs[KEY_SOUND] ?: defaults.keySound,
+            doubleSpacePeriod = prefs[KEY_DOUBLE_SPACE] ?: defaults.doubleSpacePeriod,
             keyShape = prefs[KEY_SHAPE]?.let { value ->
                 KeyShape.entries.firstOrNull { it.name == value }
             } ?: defaults.keyShape,
@@ -61,6 +65,9 @@ class ThemePreferences(private val context: Context) {
             prefs[KEY_ROW_HEIGHT] = theme.rowHeightDp
             prefs[KEY_SHAPE] = theme.keyShape.name
             prefs[KEY_SENSITIVITY] = theme.autocorrectSensitivity
+            prefs[KEY_HAPTICS] = theme.haptics
+            prefs[KEY_SOUND] = theme.keySound
+            prefs[KEY_DOUBLE_SPACE] = theme.doubleSpacePeriod
         }
     }
 
@@ -79,6 +86,9 @@ class ThemePreferences(private val context: Context) {
         val KEY_ROW_HEIGHT = floatPreferencesKey("row_height")
         val KEY_SHAPE = stringPreferencesKey("key_shape")
         val KEY_SENSITIVITY = intPreferencesKey("autocorrect_sensitivity")
+        val KEY_HAPTICS = booleanPreferencesKey("haptics")
+        val KEY_SOUND = booleanPreferencesKey("key_sound")
+        val KEY_DOUBLE_SPACE = booleanPreferencesKey("double_space_period")
     }
 }
 

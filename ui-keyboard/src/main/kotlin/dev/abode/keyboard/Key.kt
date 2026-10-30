@@ -23,6 +23,9 @@ enum class KeyKind {
     PASTE,
     UNDO,
     SPEAK,
+
+    /** Draws nothing and does nothing: the gap in the iOS-style bottom strip. */
+    SPACER,
 }
 
 /**

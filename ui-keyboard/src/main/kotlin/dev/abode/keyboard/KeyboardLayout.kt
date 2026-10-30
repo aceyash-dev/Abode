@@ -58,7 +58,11 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
          * QWERTY with the number row on top, shift and delete on the third row,
          * and 123 / globe / space / mic / return along the bottom.
          */
-        fun qwerty(shifted: Boolean = false, numberRow: Boolean = true): KeyboardLayout {
+        fun qwerty(
+            shifted: Boolean = false,
+            numberRow: Boolean = true,
+            bottomStrip: Boolean = true,
+        ): KeyboardLayout {
             val rows = mutableListOf<List<Key>>()
 
             if (numberRow) {
@@ -81,12 +85,20 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
 
             rows += listOf(
                 Key("123", KeyKind.SYMBOLS, widthWeight = 1.4f),
-                Key("🌐", KeyKind.GLOBE, widthWeight = 1.1f),
-                Key("space", KeyKind.SPACE, output = " ", widthWeight = 3.8f),
-                Key("✎", KeyKind.EDIT, widthWeight = 1.0f),
-                Key("🎤", KeyKind.VOICE, widthWeight = 1.2f),
+                Key("✎", KeyKind.EDIT, widthWeight = 1.2f),
+                Key("space", KeyKind.SPACE, output = " ", widthWeight = 4.6f),
                 Key("return", KeyKind.ENTER, widthWeight = 1.9f),
             )
+
+            // The strip under the keys, as iOS has it: the two keys that are not
+            // about typing sit away from the ones that are.
+            if (bottomStrip) {
+                rows += listOf(
+                    Key("", KeyKind.GLOBE, widthWeight = 1f),
+                    Key("", KeyKind.SPACER, widthWeight = 5f),
+                    Key("", KeyKind.VOICE, widthWeight = 1f),
+                )
+            }
 
             return KeyboardLayout(rows)
         }

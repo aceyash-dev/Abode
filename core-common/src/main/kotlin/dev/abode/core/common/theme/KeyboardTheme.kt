@@ -34,6 +34,9 @@ data class KeyboardTheme(
      * turn autocorrect off are usually reacting to it firing too early.
      */
     val autocorrectSensitivity: Int = 1,
+    val haptics: Boolean = true,
+    val keySound: Boolean = true,
+    val doubleSpacePeriod: Boolean = true,
 ) {
     companion object {
         /** Role -> human label, in the order the editor shows them. */

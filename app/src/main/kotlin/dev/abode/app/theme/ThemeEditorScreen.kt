@@ -23,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -156,6 +157,13 @@ fun ThemeEditorScreen(onBack: () -> Unit) {
             steps = 1,
         )
 
+        Text("Feedback", style = MaterialTheme.typography.titleSmall)
+        ToggleRow("Haptic feedback", theme.haptics) { update(theme.copy(haptics = it)) }
+        ToggleRow("Key sounds", theme.keySound) { update(theme.copy(keySound = it)) }
+        ToggleRow("Double space ends a sentence", theme.doubleSpacePeriod) {
+            update(theme.copy(doubleSpacePeriod = it))
+        }
+
         Text("Colours", style = MaterialTheme.typography.titleSmall)
         KeyboardTheme.COLOR_ROLES.forEach { (role, _) ->
             Row(
@@ -224,6 +232,18 @@ fun ThemeEditorScreen(onBack: () -> Unit) {
                 pickingRole = null
             },
         )
+    }
+}
+
+@Composable
+private fun ToggleRow(label: String, value: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyMedium)
+        Switch(checked = value, onCheckedChange = onChange)
     }
 }
 
