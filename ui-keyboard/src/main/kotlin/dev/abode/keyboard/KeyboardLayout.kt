@@ -103,7 +103,8 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
                     Key("Copy", KeyKind.COPY, widthWeight = 1.6f),
                     Key("Paste", KeyKind.PASTE, widthWeight = 1.6f),
                     Key("Undo", KeyKind.UNDO, widthWeight = 1.4f),
-                    Key("Speak", KeyKind.SPEAK, widthWeight = 1.6f),
+                    Key("Speak", KeyKind.SPEAK, widthWeight = 1.4f),
+                    Key("Clip", KeyKind.CLIPBOARD, widthWeight = 1.4f),
                 ),
                 listOf(
                     Key("Done", KeyKind.EDIT, widthWeight = 2.4f),
@@ -143,6 +144,31 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
                 ),
             ),
         )
+
+        /**
+         * Recent clipboard entries, one per row.
+         *
+         * Rendered through the same key grid rather than a new view: the panel
+         * inherits the touch handling, the theming and the height, and a clip is
+         * committed by the same code path as a letter.
+         */
+        fun clipboard(entries: List<String>): KeyboardLayout {
+            val rows = mutableListOf<List<Key>>()
+            entries.take(MAX_CLIP_ROWS).forEach { entry ->
+                val preview = entry.replace("\n", " ").trim().let {
+                    if (it.length <= 34) it else it.take(33) + "\u2026"
+                }
+                rows += listOf(Key(preview, KeyKind.CHARACTER, output = entry))
+            }
+            rows += listOf(
+                Key("Back", KeyKind.CLIPBOARD, widthWeight = 1.6f),
+                Key("space", KeyKind.SPACE, output = " ", widthWeight = 3.2f),
+                Key("return", KeyKind.ENTER, widthWeight = 1.9f),
+            )
+            return KeyboardLayout(rows)
+        }
+
+        private const val MAX_CLIP_ROWS = 6
 
         /** The 123 page. */
         fun symbols(shifted: Boolean = false): KeyboardLayout {

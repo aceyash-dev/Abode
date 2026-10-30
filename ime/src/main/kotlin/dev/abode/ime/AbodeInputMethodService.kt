@@ -1,5 +1,6 @@
 package dev.abode.ime
 
+import android.content.ClipboardManager
 import android.content.Intent
 import android.inputmethodservice.InputMethodService
 import android.os.SystemClock
@@ -99,6 +100,8 @@ class AbodeInputMethodService : InputMethodService(),
     private var symbolsMode = false
     private var toolbarMode = false
     private var numericMode = false
+    private var clipboardMode = false
+    private val clipHistory = ArrayDeque<String>()
     private var transliterate = false
     private var statusText = ""
     private var lastCorrection: Pair<String, String>? = null
@@ -209,6 +212,7 @@ class AbodeInputMethodService : InputMethodService(),
         symbolsMode = false
         toolbarMode = false
         numericMode = false
+        clipboardMode = false
         latinBuffer.setLength(0)
         transliterate = isDevanagariSubtype()
         setShift(false)
@@ -260,6 +264,12 @@ class AbodeInputMethodService : InputMethodService(),
     private fun onKeyUp(key: Key) {
         when (key.kind) {
             KeyKind.CHARACTER -> {
+                if (clipboardMode) {
+                    // A clip is a finished string: commit it and get out of the
+                    // way rather than staying in the panel.
+                    clipboardMode = false
+                    applyLayout()
+                }
                 if (statusText.isNotEmpty()) setStatus("")
                 if (transliterate) {
                     // Buffer the Latin letters and show them as composing text,
@@ -284,6 +294,7 @@ class AbodeInputMethodService : InputMethodService(),
             KeyKind.GLOBE -> switchInputMethod()
             KeyKind.VOICE -> toggleListening()
             KeyKind.EDIT -> toggleToolbar()
+            KeyKind.CLIPBOARD -> toggleClipboard()
             KeyKind.SELECT_ALL -> contextAction(android.R.id.selectAll)
             KeyKind.CUT -> contextAction(android.R.id.cut)
             KeyKind.COPY -> contextAction(android.R.id.copy)
@@ -446,11 +457,51 @@ class AbodeInputMethodService : InputMethodService(),
     private fun applyLayout() {
         if (!::grid.isInitialized) return
         grid.keyboardLayout = when {
+            clipboardMode -> KeyboardLayout.clipboard(clipHistory.toList())
             toolbarMode -> KeyboardLayout.editing()
             numericMode -> KeyboardLayout.numeric()
             symbolsMode -> KeyboardLayout.symbols(shifted)
             else -> KeyboardLayout.qwerty(shifted, numberRow = true)
         }
+    }
+
+    /**
+     * Clipboard history, in memory only.
+     *
+     * Nothing is written to disk: a clipboard holds passwords, one-time codes and
+     * addresses, and a keyboard that persists them has taken on a liability it
+     * did not need. The history lasts as long as the keyboard process does.
+     */
+    private fun toggleClipboard() {
+        if (clipboardMode) {
+            clipboardMode = false
+            applyLayout()
+            return
+        }
+
+        captureCurrentClip()
+        if (clipHistory.isEmpty()) {
+            setStatus("Nothing copied yet")
+            return
+        }
+
+        clipboardMode = true
+        toolbarMode = false
+        numericMode = false
+        symbolsMode = false
+        applyLayout()
+    }
+
+    private fun captureCurrentClip() {
+        val manager = getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager ?: return
+        val clip = manager.primaryClip ?: return
+        if (clip.itemCount == 0) return
+
+        val text = clip.getItemAt(0).coerceToText(this)?.toString()?.trim().orEmpty()
+        if (text.isEmpty() || clipHistory.contains(text)) return
+
+        clipHistory.addFirst(text)
+        while (clipHistory.size > MAX_CLIPS) clipHistory.removeLast()
     }
 
     private fun toggleNumeric() {
@@ -669,6 +720,10 @@ class AbodeInputMethodService : InputMethodService(),
 
             else -> false
         }
+    }
+
+    private companion object {
+        const val MAX_CLIPS = 20
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
