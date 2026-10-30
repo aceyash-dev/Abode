@@ -143,6 +143,10 @@ object VectorPaths {
                         x = startX
                         y = startY
                     }
+
+                    // Quad and relative-arc nodes: not used by Tabler, and their
+                    // field names have moved between Compose versions.
+                    else -> Unit
                 }
             }
         }
