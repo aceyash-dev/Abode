@@ -97,6 +97,47 @@ class KeyGridView @JvmOverloads constructor(
 
     /** When true, a vertical swipe turns pages instead of gliding. */
     var pagingEnabled = false
+
+    /**
+     * When true the middle rows scroll vertically inside the view.
+     *
+     * The emoji grid is the reason: a category holds hundreds of glyphs and paging
+     * through them four rows at a time is not browsing. The view keeps a fixed
+     * height and moves the rows behind it, with [pinnedTopRows] above and
+     * [pinnedRows] below held still so the tabs and the way out never move.
+     */
+    var scrollable = false
+        set(value) {
+            if (field == value) return
+            field = value
+            scrollOffset = 0f
+            rebuildGeometry()
+            requestLayout()
+            invalidate()
+        }
+
+    /** Rows at the top that stay put — the emoji search row. */
+    var pinnedTopRows = 0
+
+    /** Rows at the bottom that stay put — the category tabs and the bottom row. */
+    var pinnedRows = 0
+
+    /** Content rows visible at once; the view is measured to this many. */
+    var visibleContentRows = 4
+
+    private var scrollOffset = 0f
+    private var maxScroll = 0f
+    private var contentTop = 0f
+    private var contentBottom = 0f
+    private var headerKeyEnd = 0
+    private var pinnedStartIndex = 0
+    private var scrolling = false
+    private var lastScrollY = 0f
+    private var scrollbarAlpha = 0f
+    private val scroller = android.widget.OverScroller(context)
+    private var velocityTracker: android.view.VelocityTracker? = null
+    private val scrollbarPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val scrollbarRect = RectF()
     private var pageSwiped = false
     private val pageSlop get() = 24f * resources.displayMetrics.density
     private val fitPaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -246,6 +287,7 @@ class KeyGridView @JvmOverloads constructor(
         labelPaint.color = theme.keyLabel
         secondaryPaint.color = (theme.keyLabel and 0x00FFFFFF) or (0xAA shl 24)
         hintPaint.color = (theme.keyLabel and 0x00FFFFFF) or (0x55 shl 24)
+        scrollbarPaint.color = (theme.keyLabel and 0x00FFFFFF) or (0xFF shl 24)
         iconPaint.color = theme.keyLabel
         iconCache.clear()
         labelPaint.typeface = ThemeTypeface.forTheme(theme.fontPath, theme.fontFamily)
@@ -277,7 +319,11 @@ class KeyGridView @JvmOverloads constructor(
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val width = MeasureSpec.getSize(widthMeasureSpec)
-        val rows = keyboardLayout.rowCount.coerceAtLeast(1)
+        val rows = if (scrollable) {
+            (visibleContentRows + pinnedTopRows + pinnedRows).coerceAtLeast(1)
+        } else {
+            keyboardLayout.rowCount.coerceAtLeast(1)
+        }
         val desired = (rows * rowHeight + (rows + 1) * gap).toInt()
         setMeasuredDimension(width, resolveSize(desired, heightMeasureSpec))
     }
@@ -297,15 +343,65 @@ class KeyGridView @JvmOverloads constructor(
         rects.clear()
         keyPaths.clear()
         keys.clear()
+        headerKeyEnd = 0
+        pinnedStartIndex = 0
+        maxScroll = 0f
+        contentTop = 0f
+        contentBottom = height.toFloat()
         val w = width.toFloat()
         val h = height.toFloat()
         val rows = keyboardLayout.rows
         if (w <= 0f || h <= 0f || rows.isEmpty()) return
 
-        val rowHeightPx = (h - gap * (rows.size + 1)) / rows.size
-        var top = gap
-        var rowIndex = 0
+        if (!scrollable) {
+            layoutRows(w, rows, rowHeightFor(rows.size, h), gap, 0)
+            return
+        }
 
+        val top = pinnedTopRows.coerceIn(0, rows.size)
+        val bottom = pinnedRows.coerceIn(0, rows.size - top)
+        val contentRows = rows.size - top - bottom
+        val visible = visibleContentRows.coerceAtLeast(1)
+        val rowHeightPx = rowHeightFor(top + bottom + visible, h)
+
+        contentTop = if (top > 0) top * (rowHeightPx + gap) + gap else 0f
+        val footerHeight = if (bottom > 0) bottom * (rowHeightPx + gap) + gap else 0f
+        contentBottom = h - footerHeight
+
+        if (top > 0) {
+            layoutRows(w, rows.subList(0, top), rowHeightPx, gap, 0)
+            headerKeyEnd = rects.size
+        }
+        if (contentRows > 0) {
+            // Laid out from contentTop and then translated by the scroll offset at
+            // draw time, so the rectangles and the key paths never move: scrolling
+            // costs a canvas translate, not a rebuild of every shape.
+            layoutRows(w, rows.subList(top, top + contentRows), rowHeightPx, contentTop, top)
+        }
+        pinnedStartIndex = rects.size
+        if (bottom > 0) {
+            layoutRows(w, rows.subList(top + contentRows, rows.size), rowHeightPx, contentBottom + gap, top + contentRows)
+        }
+
+        val contentHeight = contentRows * (rowHeightPx + gap) + gap
+        val viewport = (contentBottom - contentTop).coerceAtLeast(1f)
+        maxScroll = (contentHeight - viewport).coerceAtLeast(0f)
+        scrollOffset = scrollOffset.coerceIn(0f, maxScroll)
+    }
+
+    private fun rowHeightFor(rowCount: Int, h: Float): Float =
+        (h - gap * (rowCount + 1)) / rowCount
+
+    /** Lays [rows] out from [startTop] in one column, starting at [firstRowIndex]. */
+    private fun layoutRows(
+        w: Float,
+        rows: List<List<Key>>,
+        rowHeightPx: Float,
+        startTop: Float,
+        firstRowIndex: Int,
+    ) {
+        var top = startTop
+        var rowIndex = firstRowIndex
         for (row in rows) {
             // A honeycomb only reads as one if alternate rows step in by half a
             // key; without it the hexagons line up in columns and look like
@@ -315,11 +411,6 @@ class KeyGridView @JvmOverloads constructor(
             for (key in row) totalWeight += key.widthWeight
             if (totalWeight <= 0f) continue
 
-            // Half a key of offset on alternate rows, and the *same* key width:
-            // shrinking the row to make room for the offset left the honeycomb
-            // ragged down its right edge, which is what made it look broken.
-            // The last key of an offset row hangs half a unit into the gap, the
-            // way a honeycomb does.
             val unit = (w - gap * (row.size + 1)) / row.size
             val inset = unit * stagger
             val available = w - gap * (row.size + 1)
@@ -392,6 +483,30 @@ class KeyGridView @JvmOverloads constructor(
         }
     }
 
+    /**
+     * A thin bar on the right edge of the scrolling region.
+     *
+     * Fades out when the finger stops: a permanent scrollbar on a keyboard is
+     * furniture, and this one only has to answer "how much is left".
+     */
+    private fun drawScrollbar(canvas: Canvas) {
+        if (maxScroll <= 0f || scrollbarAlpha <= 0f) return
+        val trackTop = contentTop + 2f * density
+        val trackBottom = contentBottom - 2f * density
+        val trackHeight = trackBottom - trackTop
+        if (trackHeight <= 0f) return
+        val viewport = (contentBottom - contentTop).coerceAtLeast(1f)
+        val thumbHeight = (trackHeight * (viewport / (viewport + maxScroll)))
+            .coerceAtLeast(20f * density)
+        val travel = (trackHeight - thumbHeight).coerceAtLeast(0f)
+        val fraction = if (maxScroll > 0f) (scrollOffset / maxScroll).coerceIn(0f, 1f) else 0f
+        val thumbTop = trackTop + travel * fraction
+        val x = width - 3f * density
+        scrollbarRect.set(x - 1.5f * density, thumbTop, x + 1.5f * density, thumbTop + thumbHeight)
+        scrollbarPaint.alpha = (scrollbarAlpha * 160f).toInt().coerceIn(0, 255)
+        canvas.drawRoundRect(scrollbarRect, 2f * density, 2f * density, scrollbarPaint)
+    }
+
     /** A magnifier drawn from a circle and a stroke, so it always reads as one. */
     private fun drawMagnifier(canvas: Canvas, rect: RectF) {
         val s = minOf(rect.height() * 0.30f, rect.width() * 0.34f)
@@ -442,21 +557,49 @@ class KeyGridView @JvmOverloads constructor(
     }
 
     override fun onDraw(canvas: Canvas) {
-        val count = rects.size
-        for (i in 0 until count) {
-            if (keys[i].kind == KeyKind.SPACER) continue
+        if (pinnedStartIndex > 0) {
+            // Pinned rows are drawn in view space; the scrolling rows are drawn
+            // through a translate so their rectangles never have to be rebuilt.
+            for (i in 0 until headerKeyEnd) drawKey(canvas, i)
+            canvas.save()
+            canvas.clipRect(0f, contentTop, width.toFloat(), contentBottom)
+            canvas.translate(0f, -scrollOffset)
+            for (i in headerKeyEnd until pinnedStartIndex) drawKey(canvas, i)
+            canvas.restore()
+            for (i in pinnedStartIndex until rects.size) drawKey(canvas, i)
+            drawScrollbar(canvas)
+        } else {
+            for (i in 0 until rects.size) drawKey(canvas, i)
+        }
+
+        if (scrollbarAlpha > 0f && !scrolling && scroller.isFinished) {
+            scrollbarAlpha = (scrollbarAlpha - SCROLLBAR_FADE_STEP).coerceAtLeast(0f)
+            if (scrollbarAlpha > 0f) postInvalidateOnAnimation()
+        }
+
+        if (gliding) {
+            // Two strokes: a wide soft one under a thin bright one, so the trail
+            // reads over both a light and a dark theme without a second colour.
+            canvas.drawPath(glideTrail, trailGlowPaint)
+            canvas.drawPath(glideTrail, trailPaint)
+        }
+        if (popupKeys.isNotEmpty()) drawPopup(canvas)
+    }
+
+    private fun drawKey(canvas: Canvas, i: Int) {
+            if (keys[i].kind == KeyKind.SPACER) return
             val r = rects[i]
             val key = keys[i]
             val fill = fillFor(i, key)
             if (fill != null) canvas.drawPath(keyPaths[i], fill)
             if (key.kind == KeyKind.SHIFT) {
                 drawShift(canvas, r, caps = key.label == KeyboardLayout.CAPS_LOCK_LABEL, active = key.active)
-                continue
+                return
             }
 
             if (key.kind == KeyKind.EMOJI_SEARCH) {
                 drawMagnifier(canvas, r)
-                continue
+                return
             }
 
             // Return is drawn as its arrow, unless the field asked for a named action
@@ -465,16 +608,16 @@ class KeyGridView @JvmOverloads constructor(
             val icon = if (namedEnter) null else iconFor(keys[i])
             if (icon != null) {
                 drawIcon(canvas, r, icon, keys[i].kind)
-                continue
+                return
             }
 
             val label = keys[i].label
-            if (label.isEmpty()) continue
+            if (label.isEmpty()) return
 
             // The emoji key is drawn as the smiley from the design, not as a glyph.
             if (keys[i].kind == KeyKind.EMOJI && label == "\u263A") {
                 drawSmiley(canvas, r)
-                continue
+                return
             }
 
             // Emoji are drawn larger than text so the emoji page reads at a glance.
@@ -507,15 +650,6 @@ class KeyGridView @JvmOverloads constructor(
                     hintPaint,
                 )
             }
-        }
-
-        if (gliding) {
-            // Two strokes: a wide soft one under a thin bright one, so the trail
-            // reads over both a light and a dark theme without a second colour.
-            canvas.drawPath(glideTrail, trailGlowPaint)
-            canvas.drawPath(glideTrail, trailPaint)
-        }
-        if (popupKeys.isNotEmpty()) drawPopup(canvas)
     }
 
     /**
@@ -574,6 +708,11 @@ class KeyGridView @JvmOverloads constructor(
                 glidePoints.add(floatArrayOf(event.x, event.y))
                 lastGlideX = event.x
                 lastGlideY = event.y
+                scrolling = false
+                lastScrollY = event.y
+                scroller.forceFinished(true)
+                velocityTracker?.recycle()
+                velocityTracker = android.view.VelocityTracker.obtain().apply { addMovement(event) }
 
                 setPressedKey(indexAt(event.x, event.y))
                 if (pressedIndex >= 0) {
@@ -591,6 +730,30 @@ class KeyGridView @JvmOverloads constructor(
                 if (popupKeys.isNotEmpty()) {
                     updatePopupSelection(event.x, event.y)
                     return true
+                }
+
+                if (scrollable && maxScroll > 0f) {
+                    val dx = Math.abs(event.x - downX)
+                    val dy = event.y - downY
+                    if (!scrolling && Math.abs(dy) > touchSlop && Math.abs(dy) > dx) {
+                        // A drag down the grid is a scroll, not a press: drop the
+                        // key that was lit on the way down.
+                        scrolling = true
+                        cancelRepeat()
+                        handler.removeCallbacks(longPress)
+                        if (pressedIndex >= 0) {
+                            invalidateKey(pressedIndex)
+                            pressedIndex = -1
+                        }
+                    }
+                    if (scrolling) {
+                        scrollOffset = (scrollOffset + (lastScrollY - event.y)).coerceIn(0f, maxScroll)
+                        lastScrollY = event.y
+                        scrollbarAlpha = 1f
+                        velocityTracker?.addMovement(event)
+                        invalidate()
+                        return true
+                    }
                 }
 
                 if (pagingEnabled && !pageSwiped) {
@@ -655,6 +818,33 @@ class KeyGridView @JvmOverloads constructor(
                 handler.removeCallbacks(longPress)
                 cancelRepeat()
 
+                if (scrolling) {
+                    scrolling = false
+                    velocityTracker?.let { tracker ->
+                        tracker.computeCurrentVelocity(1000)
+                        val velocity = tracker.yVelocity
+                        if (Math.abs(velocity) > MIN_FLING_VELOCITY) {
+                            // Negative y velocity is a finger moving up, which is the
+                            // content moving down the screen.
+                            scroller.fling(
+                                0,
+                                scrollOffset.toInt(),
+                                0,
+                                -velocity.toInt(),
+                                0,
+                                0,
+                                0,
+                                maxScroll.toInt(),
+                            )
+                        }
+                    }
+                    velocityTracker?.recycle()
+                    velocityTracker = null
+                    pressedIndex = -1
+                    invalidate()
+                    return true
+                }
+
                 if (pageSwiped) {
                     pageSwiped = false
                     pressedIndex = -1
@@ -709,6 +899,9 @@ class KeyGridView @JvmOverloads constructor(
             MotionEvent.ACTION_CANCEL -> {
                 handler.removeCallbacks(longPress)
                 cancelRepeat()
+                scrolling = false
+                velocityTracker?.recycle()
+                velocityTracker = null
                 dismissPopup()
                 gliding = false
                 glideKeys.clear()
@@ -720,6 +913,14 @@ class KeyGridView @JvmOverloads constructor(
             }
         }
         return super.onTouchEvent(event)
+    }
+
+    override fun computeScroll() {
+        if (scroller.computeScrollOffset()) {
+            scrollOffset = scroller.currY.toFloat().coerceIn(0f, maxScroll)
+            scrollbarAlpha = 1f
+            invalidate()
+        }
     }
 
     private fun startRepeat(key: Key) {
@@ -837,8 +1038,11 @@ class KeyGridView @JvmOverloads constructor(
     }
 
     private fun indexAt(x: Float, y: Float): Int {
+        val inContent = scrollable && y >= contentTop && y <= contentBottom
+        val contentY = if (inContent) y + scrollOffset else y
+        fun testY(i: Int): Float = if (i >= headerKeyEnd && i < pinnedStartIndex) contentY else y
         for (i in rects.indices) {
-            if (rects[i].contains(x, y)) return i
+            if (rects[i].contains(x, testY(i))) return i
         }
         // The gaps between keys are narrow and fingers are not. A touch that
         // lands a few dp outside every rectangle used to type nothing at all,
@@ -850,8 +1054,9 @@ class KeyGridView @JvmOverloads constructor(
         for (i in rects.indices) {
             if (keys[i].kind == KeyKind.SPACER) continue
             val r = rects[i]
+            val pointY = testY(i)
             val dx = maxOf(r.left - x, 0f, x - r.right)
-            val dy = maxOf(r.top - y, 0f, y - r.bottom)
+            val dy = maxOf(r.top - pointY, 0f, pointY - r.bottom)
             val distance = Math.hypot(dx.toDouble(), dy.toDouble()).toFloat()
             if (distance <= reach && distance < bestDistance) {
                 bestDistance = distance
@@ -888,6 +1093,12 @@ class KeyGridView @JvmOverloads constructor(
 
         /** Samples kept for the trail; older ones no longer change its shape. */
         const val MAX_GLIDE_POINTS = 96
+
+        /** Below this the finger was not really thrown; a fling would look wrong. */
+        const val MIN_FLING_VELOCITY = 180f
+
+        /** How much of the scrollbar disappears per frame once scrolling stops. */
+        const val SCROLLBAR_FADE_STEP = 0.06f
 
         /** Lowercase letters are drawn at this fraction of the capital size. */
         const val LOWER_LABEL_SCALE = 0.9f

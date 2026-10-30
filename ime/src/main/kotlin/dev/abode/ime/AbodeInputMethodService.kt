@@ -734,14 +734,19 @@ class AbodeInputMethodService : InputMethodService(),
 
     private fun applyLayout() {
         if (!::grid.isInitialized) return
-        grid.pagingEnabled = emojiMode && !emojiSearch
+        // The emoji grid scrolls now rather than paging, so the pager stays off.
+        grid.pagingEnabled = false
+        grid.scrollable = emojiMode && !emojiSearch
+        grid.pinnedTopRows = 1
+        grid.pinnedRows = 2
+        grid.visibleContentRows = 4
         grid.keyboardLayout = when {
             emojiSearch -> KeyboardLayout.qwerty(shifted = false, numberRow = true, capsLock = false, enterLabel = enterLabel())
             clipboardMode -> KeyboardLayout.clipboard(clipHistory.toList())
             toolbarMode -> KeyboardLayout.editing(serifOn = serifOutput, fontLabel = fontName(keyFont))
             numericMode -> KeyboardLayout.numeric()
             symbolsMode -> KeyboardLayout.symbols(symbolsPage)
-            emojiMode -> KeyboardLayout.emoji(emojiCategory, emojiPage, ::emojiRenders)
+            emojiMode -> KeyboardLayout.emojiScroll(emojiCategory, ::emojiRenders)
             else -> KeyboardLayout.qwerty(
                 shifted = shifted,
                 numberRow = true,

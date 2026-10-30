@@ -205,6 +205,54 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
         private const val KAOMOJI_PER_PAGE = 6
 
         /**
+         * The emoji page as one scrolling column: the search row, then every glyph
+         * in the category, then the tabs and the bottom row.
+         *
+         * The keyboard scrolls the middle rows itself, so this returns the whole
+         * category rather than a page of it. The three rows the person needs to
+         * reach at any moment — search, categories, and the way back to letters —
+         * are the ones the view pins.
+         */
+        fun emojiScroll(category: Int, renders: (String) -> Boolean = { true }): KeyboardLayout {
+            val catalog = EmojiPalette.tabs
+            val current = category.coerceIn(0, catalog.lastIndex)
+            val isKaomoji = catalog[current].name == EmojiPalette.KAOMOJI_NAME
+            val items = catalog[current].emoji.filter(renders)
+
+            val rows = mutableListOf<List<Key>>()
+            rows += listOf(Key("Search emoji", KeyKind.EMOJI_SEARCH, widthWeight = 1f))
+            if (isKaomoji) {
+                // One kaomoji per row: they are words, not glyphs, and two to a row
+                // would shrink both until neither could be read.
+                items.forEach { text ->
+                    rows += listOf(Key(text, KeyKind.CHARACTER, output = text, widthWeight = 1f))
+                }
+            } else {
+                items.chunked(EMOJI_PER_ROW).forEach { row ->
+                    rows += row.map { glyph -> Key(glyph, KeyKind.CHARACTER, output = glyph) }
+                }
+            }
+
+            rows += catalog.mapIndexed { index, entry ->
+                Key(
+                    label = entry.tabGlyph,
+                    kind = KeyKind.EMOJI_TAB,
+                    output = index.toString(),
+                    widthWeight = 1f,
+                    active = index == current,
+                )
+            }
+
+            rows += listOf(
+                Key("ABC", KeyKind.EMOJI, widthWeight = 1.4f),
+                Key("space", KeyKind.SPACE, output = " ", widthWeight = 4.6f),
+                Key("\u232B", KeyKind.DELETE, widthWeight = 1.2f),
+                Key("return", KeyKind.ENTER, widthWeight = 1.8f),
+            )
+            return KeyboardLayout(rows)
+        }
+
+        /**
          * The emoji page: one page of a category, a row of category tabs, and a
          * bottom row to get back to letters. Category and page come from the
          * keyboard's state, so this stays a pure function of its arguments.
