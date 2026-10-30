@@ -26,6 +26,10 @@ android {
 dependencies {
     implementation(project(":core-common"))
     implementation(libs.androidx.core.ktx)
+    // The icon pack is Compose types; the module draws on a raw Canvas but
+    // still needs ImageVector on the classpath to hand to the converter.
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.compose.ui)
     implementation(libs.tabler.icons)
     testImplementation(libs.junit)
 }
