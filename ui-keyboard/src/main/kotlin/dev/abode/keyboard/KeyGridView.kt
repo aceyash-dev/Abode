@@ -373,6 +373,9 @@ class KeyGridView @JvmOverloads constructor(
                 setPressedKey(indexAt(event.x, event.y))
                 if (pressedIndex >= 0) {
                     val key = keys[pressedIndex]
+                    // The first key of a swipe is part of the word. Without this
+                    // a glide from "h" to "ello" decoded as "ello".
+                    if (key.kind == KeyKind.CHARACTER) glideKeys.add(key)
                     if (key.hasAlternates) handler.postDelayed(longPress, LONG_PRESS_MS)
                     if (key.kind == KeyKind.DELETE) startRepeat(key)
                 }
@@ -394,6 +397,11 @@ class KeyGridView @JvmOverloads constructor(
                         cancelRepeat()
                         handler.removeCallbacks(longPress)
                         gliding = true
+                        // A swipe is not a press: drop the start key's highlight.
+                        if (pressedIndex >= 0) {
+                            invalidateKey(pressedIndex)
+                            pressedIndex = -1
+                        }
                     }
                 }
 

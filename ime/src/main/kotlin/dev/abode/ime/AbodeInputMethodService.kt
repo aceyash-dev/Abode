@@ -93,7 +93,6 @@ class AbodeInputMethodService : InputMethodService(),
     private lateinit var grid: KeyGridView
     private lateinit var strip: SuggestionStrip
 
-    private var dictionary: dev.abode.text.TrieDictionary? = null
     private var glideDecoder: GlideDecoder? = null
     private var lastCommitWasSpace = false
     private var sentenceEnded = true
@@ -129,7 +128,6 @@ class AbodeInputMethodService : InputMethodService(),
             dictionary = loaded
             glideDecoder = GlideDecoder(loaded)
             suggestionEngine.setDictionary(loaded)
-            dictionary = loaded
             learned.applyTo(loaded)
             AbodeLog.i("dictionary loaded: ${loaded.wordCount} words")
         }

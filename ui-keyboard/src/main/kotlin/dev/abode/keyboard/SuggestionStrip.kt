@@ -26,7 +26,7 @@ import dev.abode.core.common.theme.KeyboardTheme
 class SuggestionStrip @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
-) : View(context) {
+) : View(context, attrs) {
 
     interface Listener {
         /** A slot was tapped. [index] is 0, 1 or 2. */
