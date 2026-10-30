@@ -74,9 +74,12 @@ jobs:
           # Re-running a night replaces that night's release rather than failing
           # on an existing tag.
           gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
-          note="Automated build of ${GITHUB_SHA:0:7} on $(date -u +%Y-%m-%d)."
-          note="$note Debug-signed: uninstall any Play build before installing this one."
-          note="$note Not a stable release - this is whatever main looked like at midnight IST."
+          subject="$(git log -1 --format=%s "$GITHUB_SHA")"
+          note="Built from commit [${GITHUB_SHA:0:7}](https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})."
+          note="$note Full SHA: \`${GITHUB_SHA}\`"
+          note="$note"$'\n\n'"Commit message: ${subject}"
+          note="$note"$'\n\n'"Built by [run ${GITHUB_RUN_NUMBER}](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) on $(date -u +%Y-%m-%d) UTC."
+          note="$note"$'\n\n'"Debug-signed: uninstall any Play build before installing this one. Not a stable release: this is whatever main looked like when the build ran."
           gh release create "$TAG" "$APK" \
             --title "Nightly $STAMP · ${GITHUB_SHA:0:7}" \
             --target "$GITHUB_SHA" \

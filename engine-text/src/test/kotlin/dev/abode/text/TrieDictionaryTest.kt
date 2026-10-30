@@ -67,7 +67,7 @@ class TrieDictionaryTest {
     @Test
     fun `a swapped pair of letters is one edit, not two`() {
         assertEquals(1, TrieDictionary.editDistance("teh", "the"))
-        assertEquals(2, TrieDictionary.editDistance("abc", "xyz"))
+        assertEquals(3, TrieDictionary.editDistance("abc", "xyz"))
     }
 
     @Test
