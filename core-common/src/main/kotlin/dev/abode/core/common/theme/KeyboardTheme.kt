@@ -16,12 +16,14 @@ enum class KeyShape { ROUNDED, HEXAGON }
 data class KeyboardTheme(
     val id: String = "abode",
     val name: String = "Abode",
-    val background: Int = 0xFFEDEDEF.toInt(),
-    val keyBackground: Int = 0xFFF7F7F8.toInt(),
-    val keyPressed: Int = 0xFFE8641A.toInt(),
-    val keyLabel: Int = 0xFF1A1A1A.toInt(),
-    val popupBackground: Int = 0xFFFFFFFF.toInt(),
-    val accent: Int = 0xFFE8641A.toInt(),
+    // The default is the dark keyboard people already know: grey letter keys on a
+    // near-black tray, with the return key and the shift accent in system blue.
+    val background: Int = 0xFF212226.toInt(),
+    val keyBackground: Int = 0xFF636366.toInt(),
+    val keyPressed: Int = 0xFF8E8E93.toInt(),
+    val keyLabel: Int = 0xFFFFFFFF.toInt(),
+    val popupBackground: Int = 0xFF48484A.toInt(),
+    val accent: Int = 0xFF0A84FF.toInt(),
     /** Absolute path to a font file the user imported, or null for the system face. */
     val fontPath: String? = null,
     val cornerRadiusDp: Float = 12f,
@@ -75,6 +77,17 @@ object ThemePresets {
 
     val Abode = KeyboardTheme()
 
+    val Light = KeyboardTheme(
+        id = "light",
+        name = "Light",
+        background = 0xFFEDEDEF.toInt(),
+        keyBackground = 0xFFF7F7F8.toInt(),
+        keyPressed = 0xFFE8641A.toInt(),
+        keyLabel = 0xFF1A1A1A.toInt(),
+        popupBackground = 0xFFFFFFFF.toInt(),
+        accent = 0xFFE8641A.toInt(),
+    )
+
     val Midnight = KeyboardTheme(
         id = "midnight",
         name = "Midnight",
@@ -96,7 +109,7 @@ object ThemePresets {
         accent = 0xFFB44A12.toInt(),
     )
 
-    val all: List<KeyboardTheme> = listOf(Abode, Midnight, Paper)
+    val all: List<KeyboardTheme> = listOf(Abode, Light, Midnight, Paper)
 
     fun byId(id: String): KeyboardTheme = all.firstOrNull { it.id == id } ?: Abode
 }

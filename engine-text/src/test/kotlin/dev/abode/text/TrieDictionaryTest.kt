@@ -63,4 +63,23 @@ class TrieDictionaryTest {
         val dict = TrieDictionary.parse(sequenceOf("", "# comment", "word 5"))
         assertEquals(1, dict.wordCount)
     }
+
+    @Test
+    fun `a swapped pair of letters is one edit, not two`() {
+        assertEquals(1, TrieDictionary.editDistance("teh", "the"))
+        assertEquals(2, TrieDictionary.editDistance("abc", "xyz"))
+    }
+
+    @Test
+    fun `autocorrect finds a transposed word`() {
+        val dict = TrieDictionary.parse(sequenceOf("the 900", "tea 50"))
+        assertEquals("the", dict.nearest("teh", maxDistance = 1))
+    }
+
+    @Test
+    fun `a learned word rises in the suggestions`() {
+        val dict = TrieDictionary.parse(sequenceOf("the 900", "there 300", "these 200"))
+        dict.insert("these", 500)
+        assertEquals(listOf("the", "these", "there"), dict.suggestions("th", 3))
+    }
 }

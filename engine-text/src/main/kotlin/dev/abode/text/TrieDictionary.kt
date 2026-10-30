@@ -7,38 +7,50 @@ package dev.abode.text
  * binary blob; keeping the in-memory implementation here means the lookup
  * contract is testable on the JVM in milliseconds, with no Android dependency.
  *
- * The word list is kept alongside the trie because autocorrect needs to ask a
- * different question than prediction does: not "what starts with this" but
- * "what is one edit away from this". A trie answers the first well and the
- * second badly, so the flat list exists for [nearest].
+ * Each node keeps the best few completions beneath it, ranked, and updates them
+ * as words are inserted. A prefix lookup therefore reads one list instead of
+ * walking the subtree, and it cannot miss a frequent word the way a bounded walk
+ * could. That holds because frequencies only ever grow: a word that falls out of
+ * a node's top list can only come back by being inserted again, which offers it
+ * to every node on its path.
+ *
+ * Autocorrect asks a different question than prediction: not "what starts with
+ * this" but "what is one edit away from this". Words are indexed by length so
+ * that question only looks at lengths that could possibly match.
  */
 class TrieDictionary {
+
+    private class Ranked(val word: String, val frequency: Int)
 
     private class Node {
         val children = HashMap<Char, Node>(8)
         var terminal = false
-        var frequency = 0
+
+        /** Best completions beneath (and including) this node, best first. */
+        val top = ArrayList<Ranked>(TOP_K)
     }
 
     private val root = Node()
-    private val words = ArrayList<String>(1024)
     private val frequencies = HashMap<String, Int>(1024)
+    private val byLength = HashMap<Int, ArrayList<String>>()
 
     /** Derived, not tracked: one counter to keep in step is one too many. */
-    val wordCount: Int get() = words.size
+    val wordCount: Int get() = frequencies.size
 
     fun insert(word: String, frequency: Int = 1) {
         if (word.isEmpty()) return
+
+        val total = (frequencies[word] ?: 0) + frequency
+        val isNew = frequencies[word] == null
+        frequencies[word] = total
+        if (isNew) byLength.getOrPut(word.length) { ArrayList() }.add(word)
+
         var node = root
         for (c in word) {
             node = node.children.getOrPut(c) { Node() }
+            offer(node, word, total)
         }
-        if (!node.terminal) {
-            node.terminal = true
-            words.add(word)
-        }
-        node.frequency += frequency
-        frequencies[word] = (frequencies[word] ?: 0) + frequency
+        node.terminal = true
     }
 
     fun contains(word: String): Boolean {
@@ -52,8 +64,8 @@ class TrieDictionary {
     fun frequencyOf(word: String): Int = frequencies[word] ?: 0
 
     /**
-     * Up to [limit] completions for [prefix], highest frequency first.
-     * Allocation-light by design: the result list is the only allocation.
+     * Up to [limit] completions for [prefix], highest frequency first, with a
+     * shorter word winning a tie. The prefix itself is included when it is a word.
      */
     fun suggestions(prefix: String, limit: Int = 3): List<String> {
         if (prefix.isEmpty() || limit <= 0) return emptyList()
@@ -62,86 +74,86 @@ class TrieDictionary {
         for (c in prefix) {
             node = node.children[c] ?: return emptyList()
         }
-
-        // Collect a wide sample, then rank it.
-        //
-        // The cap used to be `limit * 8` — twenty-four candidates for three
-        // slots — and the walk is depth-first in insertion order, so the sample
-        // was whatever happened to sit first in the trie. Sorting twenty-four
-        // near-arbitrary words by frequency is how a strip ends up offering the
-        // right word first and two unrelated ones after it: the ranking was
-        // fine, the candidates were not.
-        val results = ArrayList<Pair<String, Int>>(limit * 32)
-        collect(node, StringBuilder(prefix), results, limit * 64)
-
-        // Frequency first, then the shortest word that finishes it. A completion
-        // that adds one letter is what somebody typing a prefix usually means;
-        // a much longer word with the same count is usually not.
-        results.sortWith(
-            compareByDescending<Pair<String, Int>> { it.second }
-                .thenBy { it.first.length }
-                .thenBy { it.first },
-        )
-        return results.take(limit).map { it.first }
+        return node.top.asSequence().take(limit).map { it.word }.toList()
     }
 
     /**
      * The closest dictionary word within [maxDistance] edits, or null.
      *
-     * Bounded on purpose: only words of a similar length are considered, and the
-     * scan stops after [scanLimit] candidates. A BK-tree is the right structure
-     * once the dictionary is large enough that this shows up in a profile — it
-     * is not worth the code before then, and the cost here is bounded by the
-     * length filter rather than by dictionary size.
+     * Only words whose length is within [maxDistance] of the input are compared,
+     * so the cost follows the size of those few length buckets, not the size of
+     * the whole dictionary. Ties go to the more frequent word.
      */
-    fun nearest(word: String, maxDistance: Int = 1, scanLimit: Int = 4000): String? {
+    fun nearest(word: String, maxDistance: Int = 1): String? {
         if (word.length < 3) return null
-        if (contains(word)) return null
-
         val lower = word.lowercase()
+        if (contains(lower)) return null
+
         var best: String? = null
         var bestDistance = maxDistance + 1
         var bestFrequency = -1
-        var scanned = 0
 
-        for (candidate in words) {
-            if (kotlin.math.abs(candidate.length - lower.length) > maxDistance) continue
-            if (scanned++ > scanLimit) break
+        for (length in (lower.length - maxDistance)..(lower.length + maxDistance)) {
+            val candidates = byLength[length] ?: continue
+            for (candidate in candidates) {
+                val distance = editDistance(lower, candidate, maxDistance)
+                if (distance > maxDistance) continue
 
-            val distance = editDistance(lower, candidate, maxDistance)
-            if (distance > maxDistance) continue
-
-            val frequency = frequencies[candidate] ?: 0
-            if (distance < bestDistance || (distance == bestDistance && frequency > bestFrequency)) {
-                best = candidate
-                bestDistance = distance
-                bestFrequency = frequency
+                val frequency = frequencies[candidate] ?: 0
+                if (distance < bestDistance || (distance == bestDistance && frequency > bestFrequency)) {
+                    best = candidate
+                    bestDistance = distance
+                    bestFrequency = frequency
+                }
             }
         }
         return best
     }
 
-    private fun collect(node: Node, prefix: StringBuilder, out: MutableList<Pair<String, Int>>, cap: Int) {
-        if (out.size >= cap) return
-        if (node.terminal) out.add(prefix.toString() to node.frequency)
-        for ((c, child) in node.children) {
-            prefix.append(c)
-            collect(child, prefix, out, cap)
-            prefix.setLength(prefix.length - 1)
+    /** Keeps [node]'s top list correct after [word] reached [frequency]. */
+    private fun offer(node: Node, word: String, frequency: Int) {
+        val list = node.top
+        for (i in list.indices) {
+            if (list[i].word == word) {
+                list.removeAt(i)
+                break
+            }
         }
+
+        var position = list.size
+        for (i in list.indices) {
+            if (ranksAbove(word, frequency, list[i])) {
+                position = i
+                break
+            }
+        }
+        if (position < TOP_K) {
+            list.add(position, Ranked(word, frequency))
+            if (list.size > TOP_K) list.removeAt(list.size - 1)
+        }
+    }
+
+    private fun ranksAbove(word: String, frequency: Int, other: Ranked): Boolean = when {
+        frequency != other.frequency -> frequency > other.frequency
+        word.length != other.word.length -> word.length < other.word.length
+        else -> word < other.word
     }
 
     companion object {
 
+        /** Completions kept per node. Three slots are shown; the rest is slack for filtering. */
+        private const val TOP_K = 8
+
         /**
-         * Levenshtein distance, abandoned as soon as it exceeds [limit].
-         * Two rolling rows rather than a full matrix: this is called on the
-         * prediction thread while somebody is typing, not in a batch job.
+         * Levenshtein distance with adjacent transpositions counted as one edit
+         * (optimal string alignment). "teh" is one edit from "the", not two, which
+         * is the most common typo there is. Abandoned as soon as it exceeds [limit].
          */
         fun editDistance(a: String, b: String, limit: Int = Int.MAX_VALUE): Int {
             if (kotlin.math.abs(a.length - b.length) > limit) return limit + 1
             if (a == b) return 0
 
+            var twoRowsUp = IntArray(b.length + 1)
             var previous = IntArray(b.length + 1) { it }
             var current = IntArray(b.length + 1)
 
@@ -149,16 +161,20 @@ class TrieDictionary {
                 current[0] = i
                 var rowMin = current[0]
                 for (j in 1..b.length) {
-                    val substitution = previous[j - 1] + if (a[i - 1] == b[j - 1]) 0 else 1
-                    val deletion = previous[j] + 1
-                    val insertion = current[j - 1] + 1
-                    current[j] = minOf(substitution, deletion, insertion)
-                    if (current[j] < rowMin) rowMin = current[j]
+                    val cost = if (a[i - 1] == b[j - 1]) 0 else 1
+                    var value = minOf(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost)
+                    if (i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1]) {
+                        value = minOf(value, twoRowsUp[j - 2] + 1)
+                    }
+                    current[j] = value
+                    if (value < rowMin) rowMin = value
                 }
                 if (rowMin > limit) return limit + 1
-                val swap = previous
+
+                val recycled = twoRowsUp
+                twoRowsUp = previous
                 previous = current
-                current = swap
+                current = recycled
             }
             return previous[b.length]
         }

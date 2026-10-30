@@ -6,10 +6,15 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
 
     companion object {
 
+        /**
+         * Keys are labelled in capitals, as the system keyboards are, and the
+         * output follows the shift state: a lower-case letter is typed unless
+         * shift is on.
+         */
         private fun letters(row: String, shifted: Boolean, alternates: Map<Char, List<String>>): List<Key> =
             row.map { c ->
-                val label = if (shifted) c.uppercaseChar().toString() else c.toString()
-                Key(label = label, output = label, alternates = alternates[c].orEmpty())
+                val output = if (shifted) c.uppercaseChar().toString() else c.toString()
+                Key(label = c.uppercaseChar().toString(), output = output, alternates = alternates[c].orEmpty())
             }
 
         /**
@@ -17,8 +22,11 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
          * and a filled arrow when caps lock is on, so the person never has to
          * guess why the next letter came out the wrong case.
          */
+        /** Label of the shift key while caps lock is on. KeyGridView draws the key from it. */
+        const val CAPS_LOCK_LABEL = "⇪"
+
         private fun shiftKey(shifted: Boolean, capsLock: Boolean): Key = Key(
-            label = if (capsLock) "⇪" else "⇧",
+            label = if (capsLock) CAPS_LOCK_LABEL else "⇧",
             kind = KeyKind.SHIFT,
             widthWeight = 1.5f,
             active = shifted,

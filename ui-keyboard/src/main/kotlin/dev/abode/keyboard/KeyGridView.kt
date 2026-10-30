@@ -155,6 +155,13 @@ class KeyGridView @JvmOverloads constructor(
     private val keyPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val pressedPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val activePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val actionPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val shiftOnPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val chevronPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
     private val popupPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val popupSelectedPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val trailPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -182,6 +189,9 @@ class KeyGridView @JvmOverloads constructor(
         keyPaint.color = theme.keyBackground
         pressedPaint.color = theme.keyPressed
         activePaint.color = theme.accent
+        shiftOnPaint.color = theme.keyLabel
+        // Utility keys sit a step darker than letters, as on the system keyboards.
+        actionPaint.color = mix(theme.keyBackground, theme.background, 0.6f)
         popupPaint.color = theme.popupBackground
         popupSelectedPaint.color = theme.keyPressed
         labelPaint.color = theme.keyLabel
@@ -281,6 +291,44 @@ class KeyGridView @JvmOverloads constructor(
         else -> null
     }
 
+    /** The fill for a key, or null for keys drawn as a bare icon on the tray. */
+    private fun fillFor(index: Int, key: Key): Paint? = when {
+        index == pressedIndex -> pressedPaint
+        key.kind == KeyKind.GLOBE || key.kind == KeyKind.VOICE -> null
+        key.kind == KeyKind.ENTER -> activePaint
+        key.kind == KeyKind.SHIFT && key.active -> shiftOnPaint
+        key.active -> activePaint
+        key.kind == KeyKind.CHARACTER || key.kind == KeyKind.SPACE -> keyPaint
+        else -> actionPaint
+    }
+
+    /**
+     * Shift is a chevron, not a glyph: a thick rounded arrowhead that reads at a
+     * glance. Caps lock adds a bar underneath, the way the system keyboards mark it.
+     * When shift is on, the key fills light and the chevron takes the tray colour.
+     */
+    private fun drawShift(canvas: Canvas, rect: RectF, caps: Boolean, active: Boolean) {
+        val s = minOf(rect.height() * 0.42f, rect.width() * 0.5f)
+        if (s <= 0f) return
+
+        val cx = rect.centerX()
+        val cy = rect.centerY() - if (caps) s * 0.12f else 0f
+        chevronPaint.color = if (active) theme.background else theme.keyLabel
+        chevronPaint.strokeWidth = s * 0.16f
+
+        val chevron = Path().apply {
+            moveTo(cx - s * 0.5f, cy + s * 0.2f)
+            lineTo(cx, cy - s * 0.3f)
+            lineTo(cx + s * 0.5f, cy + s * 0.2f)
+        }
+        canvas.drawPath(chevron, chevronPaint)
+
+        if (caps) {
+            val barY = cy + s * 0.55f
+            canvas.drawLine(cx - s * 0.5f, barY, cx + s * 0.5f, barY, chevronPaint)
+        }
+    }
+
     private fun drawIcon(canvas: Canvas, rect: RectF, vector: ImageVector, kind: KeyKind) {
         val size = minOf(rect.height() * 0.44f, rect.width() * 0.5f)
         if (size <= 0f) return
@@ -300,12 +348,13 @@ class KeyGridView @JvmOverloads constructor(
         for (i in 0 until count) {
             if (keys[i].kind == KeyKind.SPACER) continue
             val r = rects[i]
-            val fill = when {
-                i == pressedIndex -> pressedPaint
-                keys[i].active -> activePaint
-                else -> keyPaint
+            val key = keys[i]
+            val fill = fillFor(i, key)
+            if (fill != null) canvas.drawPath(keyPaths[i], fill)
+            if (key.kind == KeyKind.SHIFT) {
+                drawShift(canvas, r, caps = key.label == KeyboardLayout.CAPS_LOCK_LABEL, active = key.active)
+                continue
             }
-            canvas.drawPath(keyPaths[i], fill)
 
             // Return is drawn as its arrow, unless the field asked for a named action
             // (send, go, search): then the word is the thing the person needs to see.
@@ -585,6 +634,16 @@ class KeyGridView @JvmOverloads constructor(
             if (rects[i].contains(x, y)) return i
         }
         return -1
+    }
+
+    /** Linear blend of two ARGB colours; [amount] 0 keeps [from], 1 gives [to]. */
+    private fun mix(from: Int, to: Int, amount: Float): Int {
+        fun channel(shift: Int): Int {
+            val a = (from shr shift) and 0xFF
+            val b = (to shr shift) and 0xFF
+            return (a + (b - a) * amount).toInt().coerceIn(0, 255)
+        }
+        return (0xFF shl 24) or (channel(16) shl 16) or (channel(8) shl 8) or channel(0)
     }
 
     private companion object {

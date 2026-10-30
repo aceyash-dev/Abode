@@ -69,6 +69,11 @@ class SuggestionStrip @JvmOverloads constructor(
         typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
     }
     private val pressedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val accentPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val dividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = density
+    }
 
     private val slots = ArrayList<RectF>(3)
     private var pressed = -1
@@ -76,6 +81,9 @@ class SuggestionStrip @JvmOverloads constructor(
     fun applyTheme(theme: KeyboardTheme) {
         slotPaint.color = theme.keyBackground
         pressedPaint.color = theme.keyPressed
+        accentPaint.color = theme.accent
+        // Dividers are the label colour at a low opacity, so they read on any theme.
+        dividerPaint.color = (theme.keyLabel and 0x00FFFFFF) or (0x66 shl 24)
         labelPaint.color = theme.keyLabel
         gap = theme.keyGapDp * density
         slotHeight = (theme.rowHeightDp * 0.7f) * density
@@ -124,9 +132,22 @@ class SuggestionStrip @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         if (slots.isEmpty()) buildSlots()
         val items = labels()
+        // The first suggestion is the one the keyboard expects you to want, so it
+        // takes the accent. That is the cue that tapping it is the quick choice.
+        val highlightFirst = suggestions.isNotEmpty()
         for (i in slots.indices) {
             val r = slots[i]
-            canvas.drawRoundRect(r, corner, corner, if (i == pressed) pressedPaint else slotPaint)
+            val fill = when {
+                i == pressed -> pressedPaint
+                i == 0 && highlightFirst -> accentPaint
+                else -> slotPaint
+            }
+            canvas.drawRoundRect(r, corner, corner, fill)
+            if (i > 0) {
+                val x = (slots[i - 1].right + r.left) / 2f
+                val inset = 8f * density
+                canvas.drawLine(x, r.top + inset, x, r.bottom - inset, dividerPaint)
+            }
             val label = items.getOrNull(i) ?: continue
             val baseline = r.centerY() - (labelPaint.descent() + labelPaint.ascent()) / 2f
             // Ellipsised by hand: a suggestion wider than its slot would run
