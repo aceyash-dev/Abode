@@ -9,7 +9,6 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.LinearLayout
-import android.widget.TextView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -29,10 +28,12 @@ import dev.abode.keyboard.Key
 import dev.abode.keyboard.KeyGridView
 import dev.abode.keyboard.KeyKind
 import dev.abode.keyboard.KeyboardLayout
+import dev.abode.keyboard.SuggestionStrip
 import dev.abode.text.DictionaryLoader
 import dev.abode.text.DevanagariTransliterator
 import dev.abode.text.GlideDecoder
 import dev.abode.text.SuggestionEngine
+import dev.abode.text.TrieDictionary
 import dev.abode.voice.GoogleSpeaker
 import dev.abode.voice.SystemVoiceEngine
 import dev.abode.voice.VoiceEvent
@@ -83,9 +84,14 @@ class AbodeInputMethodService : InputMethodService(),
     private var currentTheme: KeyboardTheme = KeyboardTheme()
     private val suggestionEngine = SuggestionEngine(scope)
 
+    /** The trie the engine reads, kept so learned words can be added to it. */
+    private var dictionary: TrieDictionary? = null
+
+    private val learned by lazy { LearnedWords(this) }
+
     private lateinit var root: LinearLayout
     private lateinit var grid: KeyGridView
-    private lateinit var strip: TextView
+    private lateinit var strip: SuggestionStrip
 
     private var dictionary: dev.abode.text.TrieDictionary? = null
     private var glideDecoder: GlideDecoder? = null
@@ -123,6 +129,8 @@ class AbodeInputMethodService : InputMethodService(),
             dictionary = loaded
             glideDecoder = GlideDecoder(loaded)
             suggestionEngine.setDictionary(loaded)
+            dictionary = loaded
+            learned.applyTo(loaded)
             AbodeLog.i("dictionary loaded: ${loaded.wordCount} words")
         }
 
@@ -133,11 +141,8 @@ class AbodeInputMethodService : InputMethodService(),
                     // A status message outranks suggestions: it is the only
                     // feedback the keyboard has, and an undo offer that gets
                     // wiped by the next prediction is not an offer.
-                    strip.text = if (statusText.isNotEmpty()) {
-                        statusText
-                    } else {
-                        list.joinToString(separator = "    ")
-                    }
+                    strip.status = statusText
+                    strip.suggestions = if (statusText.isNotEmpty()) emptyList() else list
                 }
             }
         }
@@ -166,12 +171,10 @@ class AbodeInputMethodService : InputMethodService(),
         }
 
         if (!::root.isInitialized) {
-            strip = TextView(this).apply {
-                textSize = 14f
-                maxLines = 1
-                setPadding(dp(12), dp(6), dp(12), dp(6))
-                setTextColor(0xFF5F5F5F.toInt())
-                setOnClickListener { onStripTapped() }
+            strip = SuggestionStrip(this).apply {
+                listener = object : SuggestionStrip.Listener {
+                    override fun onSuggestion(index: Int) = onStripTapped(index)
+                }
             }
 
             grid = KeyGridView(this).apply {
@@ -186,7 +189,13 @@ class AbodeInputMethodService : InputMethodService(),
 
             root = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(strip, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(34)))
+                addView(
+                    strip,
+                    LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                    ),
+                )
                 addView(grid, LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -332,9 +341,27 @@ class AbodeInputMethodService : InputMethodService(),
         }
 
         autocorrectLastWord()
+        learnCurrentWord()
         commit(" ")
         lastCommitWasSpace = true
         suggestionEngine.onPrefixChanged("", capitalise = sentenceEnded)
+    }
+
+    /**
+     * Remembers the word that was just finished, if it is new enough to matter.
+     *
+     * Read from the field rather than tracked in a buffer, because autocorrect
+     * may have replaced it and the person's own spelling is the one worth
+     * learning.
+     */
+    private fun learnCurrentWord() {
+        val ic = currentInputConnection ?: return
+        val before = ic.getTextBeforeCursor(40, 0)?.toString().orEmpty()
+        val word = before.takeLastWhile { it.isLetter() || it == '\'' }
+        if (word.length < 2) return
+        if (learned.record(word)) {
+            dictionary?.insert(word.lowercase(), 40)
+        }
     }
 
     /** Replaces the word behind the cursor when the dictionary has a near miss. */
@@ -458,12 +485,17 @@ class AbodeInputMethodService : InputMethodService(),
      * Tapping it takes the top suggestion when there is one, and undoes the last
      * autocorrect when the strip is offering that instead.
      */
-    private fun onStripTapped() {
+    private fun onStripTapped(index: Int = 0) {
         if (lastCorrection != null && statusText.startsWith("Undo")) {
             undoLastCorrection()
             return
         }
-        val suggestion = currentSuggestions.firstOrNull() ?: return
+        // The slot that was tapped, not always the first: the second and third
+        // predictions were previously unreachable, which made a strip of three
+        // suggestions a strip of one.
+        val suggestion = currentSuggestions.getOrNull(index)
+            ?: currentSuggestions.firstOrNull()
+            ?: return
         val ic = currentInputConnection ?: return
 
         val before = ic.getTextBeforeCursor(40, 0)?.toString().orEmpty()
@@ -501,7 +533,7 @@ class AbodeInputMethodService : InputMethodService(),
         currentTheme = theme
         if (::grid.isInitialized) grid.theme = theme
         if (::root.isInitialized) root.setBackgroundColor(theme.background)
-        if (::strip.isInitialized) strip.setTextColor(theme.keyLabel)
+        if (::strip.isInitialized) strip.applyTheme(theme)
     }
 
     private fun applyLayout() {
@@ -686,7 +718,10 @@ class AbodeInputMethodService : InputMethodService(),
      */
     private fun setStatus(text: String) {
         statusText = text
-        if (::strip.isInitialized) strip.text = text
+        if (::strip.isInitialized) {
+            strip.status = text
+            if (text.isNotEmpty()) strip.suggestions = emptyList()
+        }
     }
 
     private fun stopListening() {

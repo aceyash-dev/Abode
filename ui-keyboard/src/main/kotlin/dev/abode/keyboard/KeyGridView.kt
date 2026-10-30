@@ -245,9 +245,14 @@ class KeyGridView @JvmOverloads constructor(
             for (key in row) totalWeight += key.widthWeight
             if (totalWeight <= 0f) continue
 
+            // Half a key of offset on alternate rows, and the *same* key width:
+            // shrinking the row to make room for the offset left the honeycomb
+            // ragged down its right edge, which is what made it look broken.
+            // The last key of an offset row hangs half a unit into the gap, the
+            // way a honeycomb does.
             val unit = (w - gap * (row.size + 1)) / row.size
             val inset = unit * stagger
-            val available = w - gap * (row.size + 1) - inset * 2
+            val available = w - gap * (row.size + 1)
             var left = gap + inset
 
             for (key in row) {
