@@ -1,7 +1,10 @@
 package dev.abode.core.ui
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -25,13 +28,23 @@ private val Dark = darkColorScheme(
     secondary = AbodeOrangeDeep,
 )
 
+/**
+ * The app's theme, on Material 3 Expressive.
+ *
+ * Expressive is a motion and shape system as much as a colour one: the theme
+ * brings spring-based motion, which is what makes a screen change feel like it
+ * moved rather than cut. The keyboard itself draws its own Canvas and does not
+ * use Compose, so none of this reaches it — this is the app's surface only.
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun AbodeTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit,
 ) {
-    MaterialTheme(
+    MaterialExpressiveTheme(
         colorScheme = if (darkTheme) Dark else Light,
+        motionScheme = MotionScheme.expressive(),
         content = content,
     )
 }

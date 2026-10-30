@@ -7,6 +7,16 @@ import android.provider.Settings
 import android.view.inputmethod.InputMethodManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -47,6 +57,9 @@ import compose.icons.tablericons.Keyboard
 import compose.icons.tablericons.Microphone
 import compose.icons.tablericons.Palette
 
+/** The app's three surfaces. One enum so the animation has something to compare. */
+private enum class Screen { HOME, APPEARANCE, CHYME }
+
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -54,16 +67,28 @@ class MainActivity : ComponentActivity() {
         setContent {
             AbodeTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    var showAppearance by remember { mutableStateOf(false) }
-                    var showChyme by remember { mutableStateOf(false) }
+                    var screen by remember { mutableStateOf(Screen.HOME) }
 
-                    when {
-                        showAppearance -> ThemeEditorScreen(onBack = { showAppearance = false })
-                        showChyme -> ChymeScreen(onBack = { showChyme = false })
-                        else -> SetupScreen(
-                            onCustomise = { showAppearance = true },
-                            onChyme = { showChyme = true },
-                        )
+                    // A slide and a fade rather than a cut: the expressive motion
+                    // scheme makes a screen change read as movement, and a settings
+                    // screen arriving from nowhere is the thing that feels cheap.
+                    AnimatedContent(
+                        targetState = screen,
+                        transitionSpec = {
+                            (slideInHorizontally { it / 6 } + fadeIn())
+                                .togetherWith(slideOutHorizontally { -it / 6 } + fadeOut())
+                        },
+                        label = "screen",
+                    ) { current ->
+                        when (current) {
+                            Screen.HOME -> SetupScreen(
+                                onCustomise = { screen = Screen.APPEARANCE },
+                                onChyme = { screen = Screen.CHYME },
+                            )
+
+                            Screen.APPEARANCE -> ThemeEditorScreen(onBack = { screen = Screen.HOME })
+                            Screen.CHYME -> ChymeScreen(onBack = { screen = Screen.HOME })
+                        }
                     }
                 }
             }
@@ -100,15 +125,42 @@ private fun SetupScreen(onCustomise: () -> Unit, onChyme: () -> Unit) {
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = TablerIcons.Keyboard,
-                contentDescription = null,
-                modifier = Modifier.size(36.dp),
-                tint = MaterialTheme.colorScheme.primary,
-            )
-            Spacer(Modifier.width(12.dp))
-            Text(text = "Abode", style = MaterialTheme.typography.displaySmall)
+        // The hero: the name, what state the keyboard is in, and a mark. It is the
+        // one place the app is allowed to be loud.
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.primaryContainer,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(Modifier.padding(24.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        shape = MaterialTheme.shapes.large,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(52.dp),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = TablerIcons.Keyboard,
+                                contentDescription = null,
+                                modifier = Modifier.size(28.dp),
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(16.dp))
+                    Text(text = "Abode", style = MaterialTheme.typography.displaySmall)
+                }
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = if (allDone) {
+                        "Ready. Type anywhere, or change how it looks."
+                    } else {
+                        "Three steps and you're typing with Abode."
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
         }
 
         Text(
@@ -193,7 +245,11 @@ private fun SetupScreen(onCustomise: () -> Unit, onChyme: () -> Unit) {
         TextButton(onClick = { showDetails = !showDetails }) {
             Text(if (showDetails) "Hide details" else "Voice and device details")
         }
-        if (showDetails) {
+        AnimatedVisibility(
+            visible = showDetails,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut(),
+        ) {
             VoiceDetails(context)
         }
     }
