@@ -25,6 +25,12 @@
             </intent-filter>
         </activity>
 
+        <!-- Search, in a window that floats over the keyboard. -->
+        <activity
+            android:name="dev.abode.app.WebSearchActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Abode.Floating" />
+
         <!--
             Transparent, zero-UI activity used to request RECORD_AUDIO.
             An InputMethodService cannot call requestPermissions(): it has no

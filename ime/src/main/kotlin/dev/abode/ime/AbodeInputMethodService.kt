@@ -1691,13 +1691,23 @@ class AbodeInputMethodService : InputMethodService(),
         closeSearchCard()
     }
 
-    /** The escape hatch: the full web, for what an instant answer cannot give. */
+    /**
+     * The escape hatch: the full web, in a window over the keyboard.
+     *
+     * It used to hand the query to a browser, which meant leaving the app you were
+     * typing in and coming back to a field that had lost its cursor. The window is
+     * the app's, not the keyboard's: a WebView is a browser engine, and the IME's
+     * process graph stays lean.
+     */
     private fun openBrowserSearch() {
         if (searchQuery.isBlank()) return
-        val uri = android.net.Uri.parse("https://www.google.com/search?q=" + android.net.Uri.encode(searchQuery))
-        runCatching {
-            startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }.onFailure { setStatus("No browser to search with") }
+        val intent = Intent().apply {
+            setClassName(packageName, "dev.abode.app.WebSearchActivity")
+            putExtra("query", searchQuery)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        runCatching { startActivity(intent) }
+            .onFailure { setStatus("Could not open the search window") }
         closeSearchCard()
     }
 
