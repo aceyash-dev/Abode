@@ -42,6 +42,9 @@ class SuggestionStrip @JvmOverloads constructor(
         /** The Chyme button, beside the toolbar button, was tapped. */
         fun onChyme() {}
 
+        /** The microphone at the right end of the strip was tapped. */
+        fun onMic() {}
+
         /** The cancel control in the dictation visualiser was tapped. */
         fun onCancelVoice() {}
     }
@@ -64,7 +67,17 @@ class SuggestionStrip @JvmOverloads constructor(
             invalidate()
         }
 
+    /** Shows a microphone at the right end of the strip. */
+    var micButton = false
+        set(value) {
+            if (field == value) return
+            field = value
+            buildSlots()
+            invalidate()
+        }
+
     private var pressedButton = -1
+    private var micPressed = false
     private val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     /** While dictating, the strip shows an accent visualiser instead of suggestions. */
@@ -91,6 +104,8 @@ class SuggestionStrip @JvmOverloads constructor(
         get() = (if (toolbarButton) 1 else 0) + (if (chymeButton) 1 else 0)
 
     private val leftInset: Float get() = BUTTON_WIDTH * density * buttonCount
+
+    private val rightInset: Float get() = if (micButton) BUTTON_WIDTH * density else 0f
 
     /** Which button sits at [index]: the toolbar is laid out first, Chyme second. */
     private fun kindAt(index: Int): Int =
@@ -218,7 +233,7 @@ class SuggestionStrip @JvmOverloads constructor(
         val items = labels()
         if (items.isEmpty() || width == 0) return
         val count = items.size.coerceAtMost(MAX_SLOTS)
-        val available = width - sidePadding * 2 - leftInset - gap * (count - 1)
+        val available = width - sidePadding * 2 - leftInset - rightInset - gap * (count - 1)
         if (available <= 0f) return
 
         // Slots are equal width rather than weighted by their text: a strip whose
@@ -293,6 +308,7 @@ class SuggestionStrip @JvmOverloads constructor(
         // The first suggestion is the one the keyboard expects you to want, so it
         // takes the accent. That is the cue that tapping it is the quick choice.
         if (buttonCount > 0) drawButtons(canvas)
+        if (micButton) drawMic(canvas)
         val highlightFirst = suggestions.isNotEmpty()
         var animating = false
         for (i in slots.indices) {
@@ -345,6 +361,31 @@ class SuggestionStrip @JvmOverloads constructor(
             canvas.drawRoundRect(r, corner, corner, fill)
             if (kindAt(i) == BUTTON_TOOLBAR) drawGridIcon(canvas, r) else drawChymeMark(canvas, r)
         }
+    }
+
+    private fun drawMic(canvas: Canvas) {
+        val size = BUTTON_WIDTH * density
+        val left = width - size
+        val top = (height - slotHeight) / 2f
+        val r = RectF(left, top, left + size, top + slotHeight)
+        val fill = if (micPressed) pressedPaint else slotPaint
+        canvas.drawRoundRect(r, corner, corner, fill)
+
+        // A microphone drawn from three strokes: capsule, stand, stem.
+        val h = minOf(r.height() * 0.30f, r.width() * 0.28f)
+        val cx = r.centerX()
+        val cy = r.centerY() - h * 0.15f
+        iconPaint.style = Paint.Style.STROKE
+        iconPaint.strokeWidth = (h * 0.30f).coerceAtLeast(1.2f)
+        canvas.drawRoundRect(
+            RectF(cx - h * 0.42f, cy - h, cx + h * 0.42f, cy + h * 0.55f),
+            h * 0.42f, h * 0.42f, iconPaint,
+        )
+        canvas.drawArc(
+            RectF(cx - h * 0.95f, cy - h * 0.35f, cx + h * 0.95f, cy + h * 1.15f),
+            0f, 180f, false, iconPaint,
+        )
+        canvas.drawLine(cx, cy + h * 1.15f, cx, cy + h * 1.55f, iconPaint)
     }
 
     private fun drawGridIcon(canvas: Canvas, r: RectF) {
@@ -402,6 +443,11 @@ class SuggestionStrip @JvmOverloads constructor(
             MotionEvent.ACTION_DOWN -> {
                 if (visualizer) {
                     cancelPressed = event.x > width - 56f * density
+                    return true
+                }
+                if (micButton && event.x >= width - rightInset) {
+                    micPressed = true
+                    invalidate()
                     return true
                 }
                 val button = buttonAt(event.x)
