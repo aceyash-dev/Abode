@@ -120,15 +120,16 @@ object VectorPaths {
                     }
 
                     is PathNode.ArcTo -> {
-                        x = node.x1 * scale
-                        y = node.y1 * scale
+                        x = node.arcStartX * scale
+                        y = node.arcStartY * scale
                         path.lineTo(x, y)
                     }
 
                     is PathNode.RelativeArcTo -> {
-                        x += node.dx1 * scale
-                        y += node.dy1 * scale
-                        path.lineTo(x, y)
+                        // Skipped: the relative arc's fields differ between Compose
+                        // versions, and Tabler's icons do not use it. Better a
+                        // missing segment than a converter that will not compile.
+                        Unit
                     }
 
                     is PathNode.Close -> {
