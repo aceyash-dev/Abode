@@ -5,7 +5,9 @@ ksp = "2.1.0-1.0.29"
 coreKtx = "1.15.0"
 lifecycle = "2.8.7"
 activityCompose = "1.9.3"
-composeBom = "2026.09.00"
+# Compose 1.11.1 with Material 3 1.4.0. The newer BOM pins Compose 1.12, which
+# requires compileSdk 37 and an AGP this project is not on yet.
+composeBom = "2026.05.00"
 coroutines = "1.9.0"
 room = "2.6.1"
 datastore = "1.1.1"
