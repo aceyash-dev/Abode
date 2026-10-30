@@ -433,6 +433,13 @@ class SuggestionStrip @JvmOverloads constructor(
                     performClick()
                     return true
                 }
+                if (micPressed) {
+                    micPressed = false
+                    invalidate()
+                    listener?.onMic()
+                    performClick()
+                    return true
+                }
                 if (pressedButton >= 0) {
                     val button = pressedButton
                     pressedButton = -1

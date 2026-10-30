@@ -718,17 +718,8 @@ class KeyGridView @JvmOverloads constructor(
                 canvas.drawText(small, x, y, secondaryPaint)
             }
 
-            if (keys[i].hasAlternates) {
-                // A dot in the corner: this key has a long press. Without it the
-                // alternates exist and nobody finds them, which is what happened
-                // to the symbol pages.
-                canvas.drawCircle(
-                    r.right - 7f * density,
-                    r.bottom - 7f * density,
-                    1.8f * density,
-                    hintPaint,
-                )
-            }
+            // No corner dot: a mark under every key reads as damage, and the long
+            // press already shows what it offers in the popup.
     }
 
     /**

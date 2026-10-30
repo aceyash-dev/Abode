@@ -91,6 +91,17 @@ class SuggestionEngine(
             if (results.size >= limit) break
             if (candidate.lowercase() != lower || results.isEmpty()) results.add(candidate)
         }
+        if (results.isEmpty()) {
+            // A mistyped letter has no completions, which used to empty the strip
+            // completely — the one moment you most want it to say something. Offer
+            // the nearest word instead, so a wrong letter gets a correction rather
+            // than silence.
+            dictionary.nearest(lower, maxDistance = 1)?.let { nearest ->
+                results.add(
+                    if (capitalise) nearest.replaceFirstChar { it.uppercaseChar() } else nearest,
+                )
+            }
+        }
         return results.take(limit)
     }
 

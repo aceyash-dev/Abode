@@ -341,10 +341,12 @@ class AbodeInputMethodService : InputMethodService(),
             strip = SuggestionStrip(this).apply {
                 toolbarButton = true
                 chymeButton = true
+                micButton = true
                 listener = object : SuggestionStrip.Listener {
                     override fun onSuggestion(index: Int) = onStripTapped(index)
                     override fun onToolbar() = toggleToolbar()
                     override fun onChyme() = toggleChyme()
+                    override fun onMic() = toggleListening()
                     override fun onCancelVoice() = cancelListening()
                 }
             }
@@ -927,7 +929,16 @@ class AbodeInputMethodService : InputMethodService(),
      * Whether the system font can draw [emoji] as one glyph. Checked once per
      * string: a sequence the font lacks falls back to boxes, so it is hidden.
      */
-    private fun emojiRenders(emoji: String): Boolean = true
+    /**
+     * Whether the system font can draw [emoji] as a glyph.
+     *
+     * `hasGlyph` asks the font rather than guessing from the code point: a device
+     * whose emoji font predates a sequence draws it as a row of boxes, and a
+     * keyboard that offers boxes is worse than one that offers fewer emoji.
+     */
+    private fun emojiRenders(emoji: String): Boolean = glyphCache.getOrPut(emoji) {
+        runCatching { glyphPaint.hasGlyph(emoji) }.getOrDefault(true)
+    }
 
     /**
      * The return key says what pressing it will do. A field that wants a search
