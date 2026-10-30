@@ -276,7 +276,7 @@ private fun openSubtypeSettings(context: Context) {
     val id = imm?.enabledInputMethodList?.firstOrNull { it.packageName == context.packageName }?.id
     val intent = if (id != null) {
         Intent(Settings.ACTION_INPUT_METHOD_SUBTYPE_SETTINGS)
-            .putExtra(InputMethodManager.EXTRA_INPUT_METHOD_ID, id)
+            .putExtra(Settings.EXTRA_INPUT_METHOD_ID, id)
     } else {
         // Not enabled yet: the subtype screen would be empty, so send them to
         // step 1 instead of to a list with nothing in it.
