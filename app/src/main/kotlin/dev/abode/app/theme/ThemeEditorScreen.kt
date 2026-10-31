@@ -90,7 +90,9 @@ fun ThemeEditorScreen(onBack: () -> Unit) {
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        val target = File(context.filesDir, "keyboard_font_${System.currentTimeMillis()}.ttf")
+        // A fixed name, overwritten each time: a timestamped name left every
+        // import behind, and nothing ever deleted them.
+        val target = File(context.filesDir, "keyboard_font.ttf")
         val copied = runCatching {
             context.contentResolver.openInputStream(uri)?.use { input ->
                 target.outputStream().use { output -> input.copyTo(output) }
@@ -220,7 +222,10 @@ fun ThemeEditorScreen(onBack: () -> Unit) {
             update(theme.copy(keyDepth = it))
         }
         ToggleRow("Dark keyboard", theme.isDark) { dark ->
-            update(KeyboardTheme.fromSeed(theme.seedColor, dark, theme))
+            // Choosing a light or dark keyboard is a decision, so it turns the
+            // follow-the-system switch off: a control that writes a value nothing
+            // reads is a broken switch.
+            update(KeyboardTheme.fromSeed(theme.seedColor, dark, theme).copy(followSystemDark = false))
         }
         ToggleRow("Wallpaper colour (Android 12+)", theme.dynamicColor) {
             update(theme.copy(dynamicColor = it))
@@ -280,7 +285,11 @@ fun ThemeEditorScreen(onBack: () -> Unit) {
                 Text("Choose font file")
             }
             if (theme.fontPath != null) {
-                TextButton(onClick = { update(theme.copy(fontPath = null)) }) {
+                TextButton(onClick = {
+                    // Reset removes the file too, or it stays on disk for good.
+                    theme.fontPath?.let { runCatching { File(it).delete() } }
+                    update(theme.copy(fontPath = null))
+                }) {
                     Text("Reset")
                 }
             }

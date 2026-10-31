@@ -61,10 +61,10 @@ object ChymeClient {
      */
     suspend fun models(config: ChymeConfig): List<String> = withContext(Dispatchers.IO) {
         if (config.apiKey.isBlank()) throw ChymeException("No key set")
-        val base = config.endpoint.trim().let { endpoint ->
-            val cut = endpoint.indexOf("/v1/")
-            if (cut > 0) endpoint.substring(0, cut) else endpoint.substringBeforeLast('/')
-        }
+        // The version segment is not always /v1/: Gemini's OpenAI-compatible path
+        // is /v1beta/openai/chat/completions, and a fixed "/v1/" lookup sent its
+        // model request to /v1beta/openai/v1/models, which does not exist.
+        val base = modelsBase(config.endpoint)
         val url = runCatching { URL("$base/v1/models") }.getOrElse {
             throw ChymeException("That endpoint is not a URL: ${config.endpoint}")
         }
@@ -97,6 +97,17 @@ object ChymeClient {
             throw ChymeException(e.message ?: "Network error")
         } finally {
             connection.disconnect()
+        }
+    }
+
+    /** The base URL a /models request hangs off, whatever the endpoint's version. */
+    private fun modelsBase(endpoint: String): String {
+        val trimmed = endpoint.trim().trimEnd('/')
+        val version = Regex("/(v\\d+[a-z0-9]*)/[^/]+$").find(trimmed)
+        return if (version != null) {
+            trimmed.substring(0, version.range.first) + "/" + version.groupValues[1] + "/models"
+        } else {
+            trimmed.substringBeforeLast('/') + "/v1/models"
         }
     }
 

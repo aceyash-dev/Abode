@@ -38,6 +38,14 @@ class SuggestionEngine(
     private var dictionary: TrieDictionary? = null
     private var job: Job? = null
 
+    /**
+     * Which lookup is current. Cancelling a job cannot stop one that has already
+     * started computing, so the result is only published when its generation is
+     * still the latest — otherwise a fast typist gets the completions for an
+     * earlier prefix, and taps a word they did not type.
+     */
+    private var generation = 0
+
     fun setDictionary(dictionary: TrieDictionary) {
         this.dictionary = dictionary
     }
@@ -51,8 +59,10 @@ class SuggestionEngine(
             return
         }
 
+        val mine = ++generation
         job = scope.launch(dispatcher) {
-            _suggestions.value = suggestFor(dict, prefix, capitalise)
+            val result = suggestFor(dict, prefix, capitalise)
+            if (mine == generation) _suggestions.value = result
         }
     }
 

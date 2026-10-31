@@ -37,6 +37,9 @@ class SearchCard(context: Context) : LinearLayout(context) {
 
     var listener: Listener? = null
 
+    /** The last theme applied, so rows built later can be styled like the rest. */
+    private var currentTheme: KeyboardTheme? = null
+
     private val density = resources.displayMetrics.density
 
     private val title = TextView(context).apply {
@@ -103,6 +106,7 @@ class SearchCard(context: Context) : LinearLayout(context) {
     }
 
     fun applyTheme(theme: KeyboardTheme) {
+        currentTheme = theme
         background = rounded(theme.popupBackground, theme.cornerRadiusDp)
         val face = ThemeTypeface.forTheme(theme.fontPath, theme.fontFamily)
         title.setTextColor(theme.keyLabel)
@@ -150,6 +154,13 @@ class SearchCard(context: Context) : LinearLayout(context) {
                     listener?.onOpen(hit.url)
                     true
                 }
+            }
+            // Styled as it is built: a row added after the last applyTheme used to
+            // keep the default label colour on the popup background, which on a dark
+            // theme is near-invisible.
+            currentTheme?.let { theme ->
+                row.setTextColor(theme.keyLabel)
+                row.background = rounded(theme.keyBackground, theme.cornerRadiusDp)
             }
             results.addView(row, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
                 setMargins(dp(2), dp(4), dp(2), 0)

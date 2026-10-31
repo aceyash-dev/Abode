@@ -57,8 +57,15 @@ object DevanagariTransliterator {
         var index = 0
         var afterConsonant = false
 
+        // Lowercased once, not once per character: this runs on the typing path, so
+        // a 40-letter word used to allocate 40 copies of itself. The length guard
+        // matters more than the speed: a character whose lowercase is longer than
+        // itself would shift every index after it and silently transliterate the
+        // wrong letters.
+        val lower = source.lowercase()
+        if (lower.length != source.length) return source
+
         while (index < source.length) {
-            val lower = source.lowercase()
             val at = index
 
             val consonant = match(lower, at, consonants)

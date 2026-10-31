@@ -463,6 +463,14 @@ class AbodeInputMethodService : InputMethodService(),
         editGroupOpen = false
         gifSearch = false
         gifQuery = ""
+        // These four leak the previous field's state: an open emoji search would
+        // swallow every letter typed in the next app, and a stale Undo would offer
+        // to undo a correction that belongs to a different field.
+        emojiSearch = false
+        emojiQuery = ""
+        statusText = ""
+        lastCorrection = null
+        currentSuggestions = emptyList()
         latinBuffer.setLength(0)
         transliterate = isDevanagariSubtype()
         hinglish = isHinglishSubtype()
@@ -714,6 +722,14 @@ class AbodeInputMethodService : InputMethodService(),
         lastCorrection = null
         val ic = currentInputConnection ?: return
 
+        // Confirm the field still ends with the corrected word before deleting
+        // anything: an undo that fires in the wrong field deletes text the person
+        // typed there.
+        val before = ic.getTextBeforeCursor(corrected.length + 1, 0)?.toString().orEmpty()
+        if (!before.endsWith("$corrected ") && !before.endsWith(corrected)) {
+            setStatus("")
+            return
+        }
         ic.beginBatchEdit()
         // The corrected word is followed by the space that triggered it.
         ic.deleteSurroundingText(corrected.length + 1, 0)
