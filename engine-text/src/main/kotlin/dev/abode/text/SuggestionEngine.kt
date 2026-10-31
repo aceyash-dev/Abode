@@ -96,7 +96,7 @@ class SuggestionEngine(
             // completely — the one moment you most want it to say something. Offer
             // the nearest word instead, so a wrong letter gets a correction rather
             // than silence.
-            dictionary.nearest(lower, maxDistance = 1)?.let { nearest ->
+            dictionary.nearest(lower, maxDistance = correctionDistance(lower.length))?.let { nearest ->
                 results.add(
                     if (capitalise) nearest.replaceFirstChar { it.uppercaseChar() } else nearest,
                 )
@@ -121,10 +121,30 @@ class SuggestionEngine(
         if (word.all { !it.isLetter() }) return null
         if (dict.contains(word.lowercase())) return null
 
+        val lower = word.lowercase()
         val capitalised = word.first().isUpperCase()
-        val nearest = dict.nearest(word.lowercase(), maxDistance = 1) ?: return null
+        val nearest = dict.nearest(lower, maxDistance = correctionDistance(lower.length)) ?: return null
+        // A second edit is only trusted for a common word. A rare word two
+        // letters away is far more often the wrong word than the intended one.
+        if (TrieDictionary.editDistance(lower, nearest, 1) > 1 &&
+            dict.frequencyOf(nearest) < RARE_WORD_FREQUENCY
+        ) {
+            return null
+        }
         return if (capitalised) nearest.replaceFirstChar { it.uppercaseChar() } else nearest
     }
 
+    /**
+     * One typo is corrected in any word of four letters or more. Two typos are
+     * corrected only in longer words, where two edits still leave most of the
+     * word intact ("recieved", "wnderful").
+     */
+    private fun correctionDistance(length: Int): Int = if (length >= 6) 2 else 1
+
     fun isWord(word: String): Boolean = dictionary?.contains(word.lowercase()) ?: false
+
+    private companion object {
+        /** Frequency per billion words below which a two-edit correction is not trusted. */
+        const val RARE_WORD_FREQUENCY = 20_000
+    }
 }

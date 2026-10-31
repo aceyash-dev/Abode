@@ -24,39 +24,9 @@
         android:label="@string/subtype_mr" />
 
     <subtype
-        android:imeSubtypeLocale="bho_IN"
-        android:imeSubtypeMode="keyboard"
-        android:label="@string/subtype_bho" />
-
-    <!--
-        The rest of the Devanagari languages. They share the transliterator with
-        Hindi and Marathi because they share the script, so each one is a label
-        and a locale rather than an engine.
-    -->
-    <subtype
         android:imeSubtypeLocale="ne_NP"
         android:imeSubtypeMode="keyboard"
         android:label="@string/subtype_ne" />
-
-    <subtype
-        android:imeSubtypeLocale="mai_IN"
-        android:imeSubtypeMode="keyboard"
-        android:label="@string/subtype_mai" />
-
-    <subtype
-        android:imeSubtypeLocale="sa_IN"
-        android:imeSubtypeMode="keyboard"
-        android:label="@string/subtype_sa" />
-
-    <subtype
-        android:imeSubtypeLocale="kok_IN"
-        android:imeSubtypeMode="keyboard"
-        android:label="@string/subtype_kok" />
-
-    <subtype
-        android:imeSubtypeLocale="doi_IN"
-        android:imeSubtypeMode="keyboard"
-        android:label="@string/subtype_doi" />
 
     <!--
         Hinglish stays in Latin script, so it is not a transliterating subtype.

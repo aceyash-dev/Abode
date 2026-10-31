@@ -19,11 +19,17 @@ object EmojiSearch {
     }
 
     fun search(query: String, limit: Int, renders: (String) -> Boolean = { true }): List<String> {
-        val q = query.trim().lowercase()
-        if (q.isEmpty()) return emptyList()
+        // Every word typed must match a keyword: "red heart" finds ❤️ and 💔, and
+        // "heart" alone finds the same. Exact keywords rank above prefixes.
+        val terms = query.trim().lowercase().split(' ').filter { it.isNotEmpty() }
+        if (terms.isEmpty()) return emptyList()
         val hits = LinkedHashSet<String>()
-        for ((emoji, words) in index) if (words.any { it == q } && renders(emoji)) hits += emoji
-        for ((emoji, words) in index) if (words.any { it.startsWith(q) } && renders(emoji)) hits += emoji
+        for ((emoji, words) in index) {
+            if (terms.all { t -> words.any { it == t } } && renders(emoji)) hits += emoji
+        }
+        for ((emoji, words) in index) {
+            if (terms.all { t -> words.any { it.startsWith(t) } } && renders(emoji)) hits += emoji
+        }
         return hits.take(limit)
     }
 }

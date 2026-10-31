@@ -549,8 +549,16 @@ class AbodeInputMethodService : InputMethodService(),
             }
 
             KeyKind.SPACE -> when {
-                gifSearch -> endGifSearch()
-                emojiSearch -> endEmojiSearch()
+                // Space is part of a search, not the end of it: "red heart" and
+                // "happy birthday" are queries.
+                gifSearch -> {
+                    gifQuery += " "
+                    showGifQuery()
+                }
+                emojiSearch -> {
+                    emojiQuery += " "
+                    refreshEmojiSearch()
+                }
                 else -> handleSpace()
             }
 
@@ -904,6 +912,9 @@ class AbodeInputMethodService : InputMethodService(),
             )
             numericMode -> KeyboardLayout.numeric()
             symbolsMode -> KeyboardLayout.symbols(symbolsPage)
+            // Searching emoji needs letters. The emoji grid has none, so the letter
+            // keyboard shows while the query is typed, and matches go to the strip.
+            emojiSearch -> KeyboardLayout.qwerty(shifted = false, numberRow = true, capsLock = false, enterLabel = enterLabel())
             emojiMode -> KeyboardLayout.emojiScroll(emojiCategory, ::emojiRenders)
             else -> KeyboardLayout.qwerty(
                 shifted = shifted,
@@ -1148,7 +1159,8 @@ class AbodeInputMethodService : InputMethodService(),
             runCatching { GiphyClient.search(query) }
                 .onSuccess { results ->
                     currentGifs = results
-                    gifResultsMode = results.isNotEmpty()
+                    // Stay in the panel even with no results, so the tabs are still there.
+                    gifResultsMode = true
                     gifSearch = false
                     if (::strip.isInitialized) {
                         strip.status = if (results.isEmpty()) "No GIFs for \u201C$query\u201D" else ""
@@ -1816,12 +1828,10 @@ class AbodeInputMethodService : InputMethodService(),
 
 
         /**
-         * Subtypes written in Devanagari. They all transliterate through the same
-         * engine, so adding a language here is a label and a locale, not an
-         * engine: Hindi, Marathi, Bhojpuri, Nepali, Maithili, Sanskrit, Konkani
-         * and Dogri.
+         * The Devanagari subtypes: Hindi, Marathi and Nepali. They all transliterate
+         * through the same engine, so a language here is a label and a locale.
          */
-        val DEVANAGARI_TAGS = listOf("hi", "mr", "bho", "ne", "mai", "sa", "kok", "doi")
+        val DEVANAGARI_TAGS = listOf("hi", "mr", "ne")
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()

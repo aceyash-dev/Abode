@@ -4,11 +4,6 @@
     <string name="subtype_en">English (Abode)</string>
     <string name="subtype_hi">हिन्दी (Abode)</string>
     <string name="subtype_mr">मराठी (Abode)</string>
-    <string name="subtype_bho">भोजपुरी (Abode)</string>
     <string name="subtype_ne">नेपाली (Abode)</string>
-    <string name="subtype_mai">मैथिली (Abode)</string>
-    <string name="subtype_sa">संस्कृतम् (Abode)</string>
-    <string name="subtype_kok">कोंकणी (Abode)</string>
-    <string name="subtype_doi">डोगरी (Abode)</string>
     <string name="subtype_hinglish">Hinglish (Abode)</string>
 </resources>
