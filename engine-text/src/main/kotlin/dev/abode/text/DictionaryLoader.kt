@@ -13,10 +13,18 @@ import kotlinx.coroutines.withContext
  */
 class DictionaryLoader(private val context: Context) {
 
-    suspend fun load(assetName: String = "words.txt"): TrieDictionary =
+    /**
+     * The list ships gzipped: 400,000 words is 4.6 MB as text and 1.4 MB as a
+     * gzip, and the compressed form is what a repository and an APK both want.
+     * A plain file is still accepted, so an older build's asset keeps working.
+     */
+    suspend fun load(assetName: String = "words.txt.gz"): TrieDictionary =
         withContext(AbodeDispatchers.io) {
-            context.assets.open(assetName).bufferedReader().useLines { lines ->
-                TrieDictionary.parse(lines)
+            val stream = runCatching {
+                java.util.zip.GZIPInputStream(context.assets.open(assetName))
+            }.getOrElse {
+                context.assets.open("words.txt")
             }
+            stream.bufferedReader().useLines { lines -> TrieDictionary.parse(lines) }
         }
 }
