@@ -717,6 +717,118 @@ class KeyGridView @JvmOverloads constructor(
         if (popupKeys.isNotEmpty()) drawPopup(canvas)
     }
 
+    /**
+     * The tool row's icons.
+     *
+     * Drawn from primitives rather than pulled from an icon font: the row is a
+     * dozen small shapes, and a keyboard that carries an icon library to draw them
+     * pays for it on every show.
+     */
+    private fun drawToolIcon(canvas: Canvas, r: RectF, kind: KeyKind) {
+        val s = minOf(r.height() * 0.30f, r.width() * 0.30f)
+        if (s <= 0f) return
+        val cx = r.centerX()
+        val cy = r.centerY()
+        iconPaint.style = Paint.Style.STROKE
+        iconPaint.strokeCap = Paint.Cap.ROUND
+        iconPaint.strokeJoin = Paint.Join.ROUND
+        iconPaint.strokeWidth = (s * 0.22f).coerceAtLeast(1.2f)
+
+        when (kind) {
+            KeyKind.EDIT_GROUP -> {
+                canvas.drawLine(cx - s * 0.7f, cy + s * 0.7f, cx + s * 0.7f, cy - s * 0.7f, iconPaint)
+                canvas.drawLine(cx + s * 0.25f, cy - s * 0.9f, cx + s * 0.9f, cy - s * 0.25f, iconPaint)
+                canvas.drawLine(cx - s * 0.85f, cy + s * 0.85f, cx - s * 0.35f, cy + s * 0.75f, iconPaint)
+            }
+
+            KeyKind.UNDO -> {
+                canvas.drawArc(RectF(cx - s, cy - s * 0.7f, cx + s, cy + s * 1.1f), 200f, 140f, false, iconPaint)
+                canvas.drawLine(cx - s, cy + s * 0.1f, cx - s * 0.45f, cy - s * 0.55f, iconPaint)
+                canvas.drawLine(cx - s, cy + s * 0.1f, cx - s * 0.45f, cy + s * 0.6f, iconPaint)
+            }
+
+            KeyKind.SPEAK -> {
+                canvas.drawRoundRect(
+                    RectF(cx - s, cy - s * 0.35f, cx - s * 0.55f, cy + s * 0.35f),
+                    s * 0.15f, s * 0.15f, iconPaint,
+                )
+                val cone = Path().apply {
+                    moveTo(cx - s * 0.55f, cy - s * 0.35f)
+                    lineTo(cx - s * 0.05f, cy - s * 0.85f)
+                    lineTo(cx - s * 0.05f, cy + s * 0.85f)
+                    lineTo(cx - s * 0.55f, cy + s * 0.35f)
+                    close()
+                }
+                canvas.drawPath(cone, iconPaint)
+                canvas.drawArc(
+                    RectF(cx - s * 0.2f, cy - s * 0.6f, cx + s * 0.9f, cy + s * 0.6f),
+                    -60f, 120f, false, iconPaint,
+                )
+            }
+
+            KeyKind.SEARCH_WEB -> drawMagnifier(canvas, r)
+
+            KeyKind.CLIPBOARD -> {
+                canvas.drawRoundRect(
+                    RectF(cx - s * 0.7f, cy - s * 0.75f, cx + s * 0.7f, cy + s * 0.9f),
+                    s * 0.2f, s * 0.2f, iconPaint,
+                )
+                canvas.drawRoundRect(
+                    RectF(cx - s * 0.32f, cy - s * 1.05f, cx + s * 0.32f, cy - s * 0.45f),
+                    s * 0.15f, s * 0.15f, iconPaint,
+                )
+            }
+
+            KeyKind.APP -> {
+                val q = s * 0.52f
+                canvas.drawRoundRect(RectF(cx - q * 1.6f, cy - q * 1.6f, cx - q * 0.1f, cy - q * 0.1f), q * 0.3f, q * 0.3f, iconPaint)
+                canvas.drawRoundRect(RectF(cx + q * 0.1f, cy - q * 1.6f, cx + q * 1.6f, cy - q * 0.1f), q * 0.3f, q * 0.3f, iconPaint)
+                canvas.drawRoundRect(RectF(cx - q * 1.6f, cy + q * 0.1f, cx - q * 0.1f, cy + q * 1.6f), q * 0.3f, q * 0.3f, iconPaint)
+                canvas.drawRoundRect(RectF(cx + q * 0.1f, cy + q * 0.1f, cx + q * 1.6f, cy + q * 1.6f), q * 0.3f, q * 0.3f, iconPaint)
+            }
+
+            KeyKind.SELECT_WORD -> {
+                canvas.drawLine(cx, cy - s * 0.85f, cx, cy + s * 0.85f, iconPaint)
+                canvas.drawLine(cx - s * 0.35f, cy - s * 0.85f, cx + s * 0.35f, cy - s * 0.85f, iconPaint)
+                canvas.drawLine(cx - s * 0.35f, cy + s * 0.85f, cx + s * 0.35f, cy + s * 0.85f, iconPaint)
+            }
+
+            KeyKind.SELECT_ALL -> {
+                canvas.drawRect(cx - s * 0.85f, cy - s * 0.7f, cx + s * 0.85f, cy + s * 0.7f, iconPaint)
+                canvas.drawLine(cx - s * 0.35f, cy, cx + s * 0.35f, cy, iconPaint)
+            }
+
+            KeyKind.COPY -> {
+                canvas.drawRoundRect(
+                    RectF(cx - s * 0.85f, cy - s * 0.85f, cx + s * 0.25f, cy + s * 0.25f),
+                    s * 0.18f, s * 0.18f, iconPaint,
+                )
+                canvas.drawRoundRect(
+                    RectF(cx - s * 0.25f, cy - s * 0.25f, cx + s * 0.85f, cy + s * 0.85f),
+                    s * 0.18f, s * 0.18f, iconPaint,
+                )
+            }
+
+            KeyKind.CUT -> {
+                canvas.drawLine(cx - s * 0.8f, cy - s * 0.8f, cx + s * 0.6f, cy + s * 0.6f, iconPaint)
+                canvas.drawLine(cx + s * 0.8f, cy - s * 0.8f, cx - s * 0.6f, cy + s * 0.6f, iconPaint)
+                canvas.drawCircle(cx - s * 0.75f, cy + s * 0.8f, s * 0.2f, iconPaint)
+                canvas.drawCircle(cx + s * 0.75f, cy + s * 0.8f, s * 0.2f, iconPaint)
+            }
+
+            KeyKind.PASTE -> {
+                canvas.drawRoundRect(
+                    RectF(cx - s * 0.7f, cy - s * 0.75f, cx + s * 0.7f, cy + s * 0.9f),
+                    s * 0.2f, s * 0.2f, iconPaint,
+                )
+                canvas.drawLine(cx, cy - s * 0.2f, cx, cy + s * 0.45f, iconPaint)
+                canvas.drawLine(cx - s * 0.32f, cy + s * 0.12f, cx + s * 0.32f, cy + s * 0.12f, iconPaint)
+            }
+
+            else -> Unit
+        }
+    }
+
     private fun drawToolOverlay(canvas: Canvas) {
         // A soft backing under the row, so the keys behind it are visibly behind.
         canvas.drawRoundRect(
@@ -824,6 +936,11 @@ class KeyGridView @JvmOverloads constructor(
 
             if (key.kind == KeyKind.GIF_RESULT || key.kind == KeyKind.CLIP_IMAGE) {
                 drawGifCell(canvas, r, key)
+                return
+            }
+
+            if (key.kind in TOOL_KINDS) {
+                drawToolIcon(canvas, r, key.kind)
                 return
             }
 
@@ -1336,6 +1453,21 @@ class KeyGridView @JvmOverloads constructor(
     }
 
     private companion object {
+        /** Keys that draw an icon rather than a label. */
+        val TOOL_KINDS = setOf(
+            KeyKind.EDIT_GROUP,
+            KeyKind.UNDO,
+            KeyKind.SPEAK,
+            KeyKind.SEARCH_WEB,
+            KeyKind.CLIPBOARD,
+            KeyKind.APP,
+            KeyKind.SELECT_WORD,
+            KeyKind.SELECT_ALL,
+            KeyKind.COPY,
+            KeyKind.CUT,
+            KeyKind.PASTE,
+        )
+
         /** Keys whose label may be an emoji or a symbol glyph. */
         val GLYPH_KINDS = setOf(KeyKind.CHARACTER, KeyKind.EMOJI, KeyKind.EMOJI_TAB, KeyKind.GLOBE)
         const val LONG_PRESS_MS = 320L
