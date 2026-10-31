@@ -110,6 +110,7 @@ class AbodeInputMethodService : InputMethodService(),
     private lateinit var grid: KeyGridView
     private lateinit var strip: SuggestionStrip
     private lateinit var chymeCard: ChymeCard
+    private lateinit var toolsRow: KeyGridView
     private lateinit var searchCard: SearchCard
     private var searchQuery = ""
     private var chymeOpen = false
@@ -363,8 +364,28 @@ class AbodeInputMethodService : InputMethodService(),
                 }
             }
 
+            toolsRow = KeyGridView(this).apply {
+                visibility = View.GONE
+                listener = object : KeyGridView.Listener {
+                    override fun onKeyDown(key: Key) = this@AbodeInputMethodService.onKeyDown(key)
+                    override fun onKeyUp(key: Key) = this@AbodeInputMethodService.onKeyUp(key)
+                    override fun onKeyRepeat(key: Key) = this@AbodeInputMethodService.onKeyDown(key)
+                    override fun onGlide(keys: List<Key>) = Unit
+                }
+            }
+
             val column = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
+                // The tool row sits above the suggestions, not below them and not
+                // over the keys: it is the topmost bar of the keyboard while it is
+                // open, and it takes no space at all while it is closed.
+                addView(
+                    toolsRow,
+                    LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                    ),
+                )
                 addView(
                     strip,
                     LinearLayout.LayoutParams(
@@ -871,6 +892,7 @@ class AbodeInputMethodService : InputMethodService(),
         if (::strip.isInitialized) strip.applyTheme(themed)
         if (::chymeCard.isInitialized) chymeCard.applyTheme(themed)
         if (::searchCard.isInitialized) searchCard.applyTheme(themed)
+        if (::toolsRow.isInitialized) toolsRow.theme = themed
     }
 
     /** Selects the word before the cursor, so Copy and Cut act on it. */
@@ -926,10 +948,16 @@ class AbodeInputMethodService : InputMethodService(),
         // The tools float over the keys rather than joining the layout: a row in
         // the layout would change the keyboard's height, and the keyboard jumping
         // every time the tools open is worse than no tools at all.
-        grid.toolOverlay = if (toolbarMode) {
-            KeyboardLayout.toolsRow(typedStyle, editGroupOpen)
-        } else {
-            emptyList()
+        grid.toolOverlay = emptyList()
+        if (::toolsRow.isInitialized) {
+            if (toolbarMode) {
+                toolsRow.keyboardLayout = KeyboardLayout(
+                    listOf(KeyboardLayout.toolsRow(typedStyle, editGroupOpen)),
+                )
+                toolsRow.visibility = View.VISIBLE
+            } else {
+                toolsRow.visibility = View.GONE
+            }
         }
         grid.keyboardLayout = base.withSpaceLabel(spaceLabel)
     }
