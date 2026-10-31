@@ -25,6 +25,7 @@ import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import dev.abode.ai.AiAction
+import dev.abode.ai.ChymeBridge
 import dev.abode.ai.ChymeClient
 import dev.abode.ai.ChymePrompts
 import dev.abode.ai.ChymeStore
@@ -411,6 +412,10 @@ class AbodeInputMethodService : InputMethodService(),
                 }
             }
 
+            // The Chyme window hands its result back through this, because a
+            // window has no input connection of its own.
+            ChymeBridge.insert = { text -> insertChymeResult(text) }
+
             searchCard = SearchCard(this).apply {
                 visibility = View.GONE
                 listener = object : SearchCard.Listener {
@@ -506,6 +511,7 @@ class AbodeInputMethodService : InputMethodService(),
     override fun onEvaluateFullscreenMode(): Boolean = false
 
     override fun onDestroy() {
+        ChymeBridge.insert = null
         voiceEngine?.release()
         voiceEngine = null
         speaker?.release()
@@ -1250,21 +1256,43 @@ class AbodeInputMethodService : InputMethodService(),
         val declared = currentInputEditorInfo?.contentMimeTypes
         val textOnly = declared != null && declared.none { it.startsWith("image/") }
         if (textOnly) {
-            commit(url)
-            endGifSearch()
+            // The field says it takes text only. Rather than paste a URL nobody
+            // asked for, put the GIF on the clipboard and say so: from there it
+            // pastes into any app that takes images.
+            scope.launch {
+                val file = kotlinx.coroutines.withContext(AbodeDispatchers.io) { downloadGif(media) }
+                if (file != null && copyGifToClipboard(file)) {
+                    setStatus("GIF copied \u2014 paste it")
+                } else {
+                    commit(url)
+                }
+                endGifSearch()
+            }
             return
         }
         scope.launch {
             val file = kotlinx.coroutines.withContext(AbodeDispatchers.io) { downloadGif(media) }
-            if (file == null) {
-                commit(url)
-            } else {
-                val sent = sendGifAttachment(file)
-                if (!sent) commit(url)
+            when {
+                file == null -> commit(url)
+                sendGifAttachment(file) -> Unit
+                // The app refused the commit. A link is the last resort, not the
+                // second one: the clipboard keeps the GIF itself intact.
+                copyGifToClipboard(file) -> setStatus("GIF copied \u2014 paste it")
+                else -> commit(url)
             }
             endGifSearch()
         }
     }
+
+    /** Puts the downloaded GIF on the clipboard as an image URI. */
+    private fun copyGifToClipboard(file: java.io.File): Boolean = runCatching {
+        val uri = androidx.core.content.FileProvider.getUriForFile(this, CLIP_AUTHORITY, file)
+        val manager = getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager ?: return false
+        manager.setPrimaryClip(
+            android.content.ClipData.newUri(contentResolver, "GIF", uri),
+        )
+        true
+    }.getOrDefault(false)
 
     /** The file, or null when the download or the write failed. */
     private fun downloadGif(url: String): java.io.File? = runCatching {
@@ -1294,7 +1322,7 @@ class AbodeInputMethodService : InputMethodService(),
             val uri = androidx.core.content.FileProvider.getUriForFile(this, CLIP_AUTHORITY, file)
             val info = android.view.inputmethod.InputContentInfo(
                 uri,
-                android.content.ClipDescription("GIF", arrayOf("image/gif")),
+                android.content.ClipDescription("GIF", arrayOf("image/gif", "image/*")),
             )
             val flags = android.view.inputmethod.InputConnection.INPUT_CONTENT_GRANT_READ_URI_PERMISSION
             ic.commitContent(info, flags, null)
@@ -1430,11 +1458,22 @@ class AbodeInputMethodService : InputMethodService(),
 
     // ---------------------------------------------------------------- chyme
 
+    /**
+     * Opens Chyme in a window over the keyboard.
+     *
+     * A window is an activity, so it cannot touch the input connection. The text
+     * goes out in the intent and the answer comes back through ChymeBridge, which
+     * works because the IME and the app share one process.
+     */
     private fun toggleChyme() {
-        if (!::chymeCard.isInitialized) return
-        chymeOpen = !chymeOpen
-        chymeCard.visibility = if (chymeOpen) View.VISIBLE else View.GONE
-        if (chymeOpen) chymeCard.showIdle(chymeStore.load())
+        val text = textForChyme()
+        val intent = Intent().apply {
+            setClassName(packageName, "dev.abode.app.ChymeActivity")
+            putExtra("text", text)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        runCatching { startActivity(intent) }
+            .onFailure { setStatus("Could not open Chyme") }
     }
 
     private fun closeChyme() {

@@ -25,6 +25,12 @@
             </intent-filter>
         </activity>
 
+        <!-- Chyme, in a window that floats over the keyboard. -->
+        <activity
+            android:name="dev.abode.app.ChymeActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Abode.Floating" />
+
         <!-- Search, in a window that floats over the keyboard. -->
         <activity
             android:name="dev.abode.app.WebSearchActivity"
