@@ -98,7 +98,7 @@ class AbodeInputMethodService : InputMethodService(),
 
     private val scope = CoroutineScope(SupervisorJob() + AbodeDispatchers.main)
     private val themePreferences by lazy { ThemePreferences(this) }
-    private var currentTheme: KeyboardTheme = KeyboardTheme()
+    private var currentTheme: KeyboardTheme = dev.abode.core.common.theme.ThemePresets.Paper
     private val suggestionEngine = SuggestionEngine(scope)
 
     /** The trie the engine reads, kept so learned words can be added to it. */
@@ -343,11 +343,13 @@ class AbodeInputMethodService : InputMethodService(),
                 toolbarButton = true
                 chymeButton = true
                 micButton = true
+                clipButton = true
                 listener = object : SuggestionStrip.Listener {
                     override fun onSuggestion(index: Int) = onStripTapped(index)
                     override fun onToolbar() = toggleToolbar()
                     override fun onChyme() = toggleChyme()
                     override fun onMic() = toggleListening()
+                    override fun onClipboard() = toggleClipboard()
                     override fun onCancelVoice() = cancelListening()
                 }
             }
@@ -1695,8 +1697,13 @@ class AbodeInputMethodService : InputMethodService(),
         }
         val ic = currentInputConnection ?: return
         val selected = ic.getSelectedText(0)?.toString().orEmpty().trim()
-        val before = ic.getTextBeforeCursor(60, 0)?.toString().orEmpty()
-        val query = selected.ifEmpty { before.trim().split(' ').lastOrNull().orEmpty() }
+        val before = ic.getTextBeforeCursor(240, 0)?.toString().orEmpty()
+        // The sentence, not the last word: searching "the" because it was the word
+        // under the cursor is not what anybody meant by "search this".
+        val sentence = before
+            .takeLastWhile { it != '.' && it != '!' && it != '?' && it != '\n' }
+            .trim()
+        val query = selected.ifEmpty { sentence }
         if (query.isEmpty()) {
             setStatus("Nothing to search")
             return

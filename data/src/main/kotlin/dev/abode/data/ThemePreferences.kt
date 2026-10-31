@@ -25,7 +25,8 @@ private val Context.themeDataStore by preferencesDataStore(name = "keyboard_them
 class ThemePreferences(private val context: Context) {
 
     val theme: Flow<KeyboardTheme> = context.themeDataStore.data.map { prefs ->
-        val defaults = KeyboardTheme()
+        // Paper is the default: a warm, light keyboard that does not shout.
+        val defaults = dev.abode.core.common.theme.ThemePresets.Paper
         KeyboardTheme(
             id = prefs[KEY_ID] ?: defaults.id,
             name = prefs[KEY_NAME] ?: defaults.name,
@@ -48,6 +49,7 @@ class ThemePreferences(private val context: Context) {
             isDark = prefs[KEY_DARK] ?: defaults.isDark,
             followSystemDark = prefs[KEY_FOLLOW_SYSTEM] ?: defaults.followSystemDark,
             dynamicColor = prefs[KEY_DYNAMIC] ?: defaults.dynamicColor,
+            keyDepth = prefs[KEY_DEPTH] ?: defaults.keyDepth,
             keyShape = prefs[KEY_SHAPE]?.let { value ->
                 KeyShape.entries.firstOrNull { it.name == value }
             } ?: defaults.keyShape,
@@ -78,6 +80,7 @@ class ThemePreferences(private val context: Context) {
             prefs[KEY_DARK] = theme.isDark
             prefs[KEY_FOLLOW_SYSTEM] = theme.followSystemDark
             prefs[KEY_DYNAMIC] = theme.dynamicColor
+            prefs[KEY_DEPTH] = theme.keyDepth
         }
     }
 
@@ -104,6 +107,7 @@ class ThemePreferences(private val context: Context) {
         val KEY_DARK = booleanPreferencesKey("is_dark")
         val KEY_FOLLOW_SYSTEM = booleanPreferencesKey("follow_system_dark")
         val KEY_DYNAMIC = booleanPreferencesKey("dynamic_color")
+        val KEY_DEPTH = booleanPreferencesKey("key_depth")
     }
 }
 

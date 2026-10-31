@@ -69,7 +69,9 @@ fun ThemeEditorScreen(onBack: () -> Unit) {
     val preferences = remember { ThemePreferences(context) }
     val scope = rememberCoroutineScope()
 
-    val stored by preferences.theme.collectAsState(initial = KeyboardTheme())
+    val stored by preferences.theme.collectAsState(
+        initial = dev.abode.core.common.theme.ThemePresets.Paper,
+    )
     var draft by remember { mutableStateOf<KeyboardTheme?>(null) }
     val theme = draft ?: stored
 
@@ -213,6 +215,9 @@ fun ThemeEditorScreen(onBack: () -> Unit) {
 
         ToggleRow("Follow system dark mode", theme.followSystemDark) {
             update(theme.copy(followSystemDark = it))
+        }
+        ToggleRow("Key depth (lip and inner shade)", theme.keyDepth) {
+            update(theme.copy(keyDepth = it))
         }
         ToggleRow("Dark keyboard", theme.isDark) { dark ->
             update(KeyboardTheme.fromSeed(theme.seedColor, dark, theme))

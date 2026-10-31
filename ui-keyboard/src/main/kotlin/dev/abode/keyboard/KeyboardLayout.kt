@@ -382,7 +382,7 @@ data class KeyboardLayout(val rows: List<List<Key>>) {
                     Key("Speak", KeyKind.SPEAK, widthWeight = 1f),
                     Key("Google", KeyKind.SEARCH_WEB, widthWeight = 1.1f),
                     Key("Clip", KeyKind.CLIPBOARD, widthWeight = 1f),
-                    Key("Chyme", KeyKind.CHYME, widthWeight = 1.1f),
+                    // Chyme is the button in the strip, so it is not also here.
                     Key("App", KeyKind.APP, widthWeight = 1f),
                 )
             }

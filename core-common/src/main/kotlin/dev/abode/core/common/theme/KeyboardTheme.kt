@@ -54,9 +54,15 @@ data class KeyboardTheme(
     /** Dark keyboard (light keys on a dark tray) or light. Drives [fromSeed]. */
     val isDark: Boolean = true,
     /** Follow the system's night mode instead of [isDark]. Resolved at draw time. */
-    val followSystemDark: Boolean = false,
+    val followSystemDark: Boolean = true,
     /** Take the accent from the wallpaper on Android 12+. Resolved at draw time. */
     val dynamicColor: Boolean = false,
+    /**
+     * The lip, sheen and inner shade that give a key depth. Off is flat: some
+     * people want the keyboard to disappear, and a bevelled key is the opposite
+     * of disappearing.
+     */
+    val keyDepth: Boolean = true,
 ) {
     companion object {
 
@@ -210,5 +216,5 @@ object ThemePresets {
 
     val all: List<KeyboardTheme> = listOf(Abode, Light, Midnight, Paper)
 
-    fun byId(id: String): KeyboardTheme = all.firstOrNull { it.id == id } ?: Abode
+    fun byId(id: String): KeyboardTheme = all.firstOrNull { it.id == id } ?: Paper
 }

@@ -750,6 +750,11 @@ class KeyGridView @JvmOverloads constructor(
             canvas.drawPath(path, fill)
             return
         }
+        if (!theme.keyDepth) {
+            // Flat keys: the face is the whole key.
+            canvas.drawPath(path, fill)
+            return
+        }
         val depth = 2.5f * density
         val pressed = i == pressedIndex
 

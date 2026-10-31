@@ -49,6 +49,9 @@ class SuggestionStrip @JvmOverloads constructor(
         /** The microphone at the right end of the strip was tapped. */
         fun onMic() {}
 
+        /** The clipboard button, beside the microphone, was tapped. */
+        fun onClipboard() {}
+
         /** The cancel control in the dictation visualiser was tapped. */
         fun onCancelVoice() {}
     }
@@ -80,8 +83,18 @@ class SuggestionStrip @JvmOverloads constructor(
             invalidate()
         }
 
+    /** Shows a clipboard button to the left of the microphone. */
+    var clipButton = false
+        set(value) {
+            if (field == value) return
+            field = value
+            buildSlots()
+            invalidate()
+        }
+
     private var pressedButton = -1
     private var micPressed = false
+    private var clipPressed = false
     private val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     /** While dictating, the strip shows an accent visualiser instead of suggestions. */
@@ -109,7 +122,18 @@ class SuggestionStrip @JvmOverloads constructor(
 
     private val leftInset: Float get() = BUTTON_WIDTH * density * buttonCount
 
-    private val rightInset: Float get() = if (micButton) BUTTON_WIDTH * density else 0f
+    private val rightButtonCount: Int
+        get() = (if (micButton) 1 else 0) + (if (clipButton) 1 else 0)
+
+    private val rightInset: Float get() = BUTTON_WIDTH * density * rightButtonCount
+
+    /** The microphone is the rightmost slot; the clipboard sits to its left. */
+    private fun rightButtonAt(x: Float): Int {
+        val size = BUTTON_WIDTH * density
+        if (x < width - rightInset) return -1
+        val fromRight = (width - x) / size
+        return if (fromRight <= 1f && micButton) BUTTON_MIC else BUTTON_CLIP
+    }
 
     /** Which button sits at [index]: the toolbar is laid out first, Chyme second. */
     private fun kindAt(index: Int): Int =
@@ -312,6 +336,7 @@ class SuggestionStrip @JvmOverloads constructor(
         // The first suggestion is the one the keyboard expects you to want, so it
         // takes the accent. That is the cue that tapping it is the quick choice.
         if (buttonCount > 0) drawButtons(canvas)
+        if (clipButton) drawClipButton(canvas)
         if (micButton) drawMic(canvas)
         val highlightFirst = suggestions.isNotEmpty()
         var animating = false
@@ -374,6 +399,30 @@ class SuggestionStrip @JvmOverloads constructor(
      * strip size the cradle arms are what make it read as a microphone instead of
      * a pill.
      */
+    private fun drawClipButton(canvas: Canvas) {
+        val size = BUTTON_WIDTH * density
+        // The clipboard sits one slot left of the microphone.
+        val left = width - size * (if (micButton) 2 else 1)
+        val top = (height - slotHeight) / 2f
+        val r = RectF(left, top, left + size, top + slotHeight)
+        canvas.drawRoundRect(r, corner, corner, if (clipPressed) pressedPaint else slotPaint)
+
+        val h = minOf(r.height() * 0.26f, r.width() * 0.26f)
+        val cx = r.centerX()
+        val cy = r.centerY()
+        iconPaint.style = Paint.Style.STROKE
+        iconPaint.strokeWidth = (h * 0.20f).coerceAtLeast(1.2f)
+        iconPaint.strokeCap = Paint.Cap.ROUND
+        canvas.drawRoundRect(
+            RectF(cx - h * 0.72f, cy - h * 0.95f, cx + h * 0.72f, cy + h * 1.05f),
+            h * 0.28f, h * 0.28f, iconPaint,
+        )
+        canvas.drawRoundRect(
+            RectF(cx - h * 0.34f, cy - h * 1.35f, cx + h * 0.34f, cy - h * 0.65f),
+            h * 0.18f, h * 0.18f, iconPaint,
+        )
+    }
+
     private fun drawMic(canvas: Canvas) {
         val size = BUTTON_WIDTH * density
         val left = width - size
@@ -471,10 +520,18 @@ class SuggestionStrip @JvmOverloads constructor(
                     cancelPressed = event.x > width - 56f * density
                     return true
                 }
-                if (micButton && event.x >= width - rightInset) {
-                    micPressed = true
-                    invalidate()
-                    return true
+                when (rightButtonAt(event.x)) {
+                    BUTTON_MIC -> {
+                        micPressed = true
+                        invalidate()
+                        return true
+                    }
+
+                    BUTTON_CLIP -> {
+                        clipPressed = true
+                        invalidate()
+                        return true
+                    }
                 }
                 val button = buttonAt(event.x)
                 if (button >= 0) {
@@ -512,6 +569,13 @@ class SuggestionStrip @JvmOverloads constructor(
                     performClick()
                     return true
                 }
+                if (clipPressed) {
+                    clipPressed = false
+                    invalidate()
+                    listener?.onClipboard()
+                    performClick()
+                    return true
+                }
                 if (pressedButton >= 0) {
                     val button = pressedButton
                     pressedButton = -1
@@ -535,6 +599,8 @@ class SuggestionStrip @JvmOverloads constructor(
             MotionEvent.ACTION_CANCEL -> {
                 pressed = -1
                 pressedButton = -1
+                micPressed = false
+                clipPressed = false
                 invalidate()
                 return true
             }
@@ -559,6 +625,8 @@ class SuggestionStrip @JvmOverloads constructor(
         const val BUTTON_WIDTH = 44f
         const val BUTTON_TOOLBAR = 0
         const val BUTTON_CHYME = 1
+        const val BUTTON_MIC = 2
+        const val BUTTON_CLIP = 3
 
         /** How long one slot waits behind the slot before it. */
         const val STAGGER_MS = 45L
