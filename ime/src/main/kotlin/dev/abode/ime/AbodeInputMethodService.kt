@@ -110,12 +110,9 @@ class AbodeInputMethodService : InputMethodService(),
     private lateinit var root: FrameLayout
     private lateinit var grid: KeyGridView
     private lateinit var strip: SuggestionStrip
-    private lateinit var chymeCard: ChymeCard
     private lateinit var toolsRow: KeyGridView
     private lateinit var searchCard: SearchCard
     private var searchQuery = ""
-    private var chymeOpen = false
-
     /** The theme as stored, before the system's night mode and wallpaper are applied. */
     private var storedTheme: KeyboardTheme? = null
     private val chymeStore by lazy { ChymeStore(this) }
@@ -402,16 +399,6 @@ class AbodeInputMethodService : InputMethodService(),
                 ))
             }
 
-            chymeCard = ChymeCard(this).apply {
-                visibility = View.GONE
-                listener = object : ChymeCard.Listener {
-                    override fun onAction(action: AiAction) = runChyme(action)
-                    override fun onInsert(text: String) = insertChymeResult(text)
-                    override fun onClose() = closeChyme()
-                    override fun onSettings() = openAbodeApp()
-                }
-            }
-
             // The Chyme window hands its result back through this, because a
             // window has no input connection of its own.
             ChymeBridge.insert = { text -> insertChymeResult(text) }
@@ -444,7 +431,6 @@ class AbodeInputMethodService : InputMethodService(),
                     leftMargin = dp(8)
                     topMargin = dp(6)
                 }
-                addView(chymeCard, cardParams)
                 addView(searchCard, FrameLayout.LayoutParams(cardParams))
             }
 
@@ -477,7 +463,6 @@ class AbodeInputMethodService : InputMethodService(),
         editGroupOpen = false
         gifSearch = false
         gifQuery = ""
-        closeChyme()
         latinBuffer.setLength(0)
         transliterate = isDevanagariSubtype()
         hinglish = isHinglishSubtype()
@@ -898,7 +883,6 @@ class AbodeInputMethodService : InputMethodService(),
         if (::grid.isInitialized) grid.theme = themed
         if (::root.isInitialized) root.background = trayBackground(themed.background)
         if (::strip.isInitialized) strip.applyTheme(themed)
-        if (::chymeCard.isInitialized) chymeCard.applyTheme(themed)
         if (::searchCard.isInitialized) searchCard.applyTheme(themed)
         if (::toolsRow.isInitialized) toolsRow.theme = themed
     }
@@ -1476,10 +1460,6 @@ class AbodeInputMethodService : InputMethodService(),
             .onFailure { setStatus("Could not open Chyme") }
     }
 
-    private fun closeChyme() {
-        chymeOpen = false
-        if (::chymeCard.isInitialized) chymeCard.visibility = View.GONE
-    }
 
     /**
      * What an action works on: the selection if there is one, otherwise the
@@ -1492,33 +1472,6 @@ class AbodeInputMethodService : InputMethodService(),
         if (selected.isNotBlank()) return selected
         val before = ic.getTextBeforeCursor(600, 0)?.toString().orEmpty()
         return before.takeLastWhile { it != '.' && it != '!' && it != '?' && it != '\n' }.trim()
-    }
-
-    private fun runChyme(action: AiAction) {
-        if (!::chymeCard.isInitialized) return
-        val config = chymeStore.load()
-        if (!config.isConfigured) {
-            // Not an error: the card says what is missing and offers the way there.
-            chymeCard.showIdle(config)
-            return
-        }
-        val text = textForChyme()
-        if (text.isBlank()) {
-            // Write needs a prompt; the other actions need something to rewrite.
-            chymeCard.showError(
-                if (action == AiAction.WRITE) "Type a topic first" else "Nothing to work on yet",
-            )
-            return
-        }
-        chymeCard.showWorking(action)
-        scope.launch {
-            val language = java.util.Locale.getDefault()
-                .getDisplayLanguage(java.util.Locale.ENGLISH)
-                .ifBlank { "English" }
-            runCatching { ChymeClient.complete(config, ChymePrompts.forAction(action, text, language)) }
-                .onSuccess { chymeCard.showResult(it) }
-                .onFailure { chymeCard.showError(it.message ?: "Request failed") }
-        }
     }
 
     private fun insertChymeResult(text: String) {
@@ -1534,7 +1487,6 @@ class AbodeInputMethodService : InputMethodService(),
             ic.commitText(text, 1)
         }
         ic.endBatchEdit()
-        closeChyme()
         suggestionEngine.onPrefixChanged(currentWordPrefix(), capitalise = false)
     }
 
@@ -1543,7 +1495,6 @@ class AbodeInputMethodService : InputMethodService(),
         val intent = packageManager.getLaunchIntentForPackage(packageName) ?: return
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         runCatching { startActivity(intent) }
-        closeChyme()
     }
 
     /**
@@ -1749,7 +1700,6 @@ class AbodeInputMethodService : InputMethodService(),
         }
         if (!::searchCard.isInitialized) return
         searchQuery = query
-        closeChyme()
         searchCard.visibility = View.VISIBLE
         searchCard.showQuery(query)
         scope.launch {
