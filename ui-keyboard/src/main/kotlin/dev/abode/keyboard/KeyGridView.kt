@@ -305,6 +305,16 @@ class KeyGridView @JvmOverloads constructor(
     /** Lowercase letters, a shade smaller than capitals. Cloned from [labelPaint]. */
     private val lowerPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
+    // The 3D key: a darker lip under the face, a light sheen along the top edge
+    // and a shade along the bottom, inset inside the key shape like a bevelled button.
+    private val lipPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val sheenPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val shadePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val shadeMatrix = android.graphics.Matrix()
+    private var shadeHeight = -1f
+    private var sheenShader: android.graphics.LinearGradient? = null
+    private var shadeShader: android.graphics.LinearGradient? = null
+
     init {
         isClickable = true
         isHapticFeedbackEnabled = true
@@ -727,12 +737,76 @@ class KeyGridView @JvmOverloads constructor(
         }
     }
 
+    /**
+     * Paints a key's face with depth. Idle keys stand on a darker lip; a pressed
+     * key drops onto it and loses the lip, so the press reads as movement.
+     */
+    private fun drawKeyFace(canvas: Canvas, i: Int, fill: Paint) {
+        val path = keyPaths[i]
+        val bounds = RectF()
+        path.computeBounds(bounds, true)
+        val h = bounds.height()
+        if (h <= 0f) {
+            canvas.drawPath(path, fill)
+            return
+        }
+        val depth = 2.5f * density
+        val pressed = i == pressedIndex
+
+        if (!pressed) {
+            lipPaint.color = darken(fill.color, 0.45f)
+            canvas.save()
+            canvas.translate(0f, depth)
+            canvas.drawPath(path, lipPaint)
+            canvas.restore()
+        }
+
+        canvas.save()
+        if (pressed) canvas.translate(0f, depth * 0.6f)
+        canvas.drawPath(path, fill)
+        if (!pressed) {
+            ensureShadeShaders(h)
+            canvas.clipPath(path)
+            shadeMatrix.setTranslate(0f, bounds.top)
+            sheenShader?.setLocalMatrix(shadeMatrix)
+            shadeShader?.setLocalMatrix(shadeMatrix)
+            canvas.drawRect(bounds, sheenPaint)
+            canvas.drawRect(bounds, shadePaint)
+        }
+        canvas.restore()
+    }
+
+    /** Gradients are built once per key height and moved into place per key. */
+    private fun ensureShadeShaders(height: Float) {
+        if (height == shadeHeight && sheenShader != null) return
+        shadeHeight = height
+        sheenShader = android.graphics.LinearGradient(
+            0f, 0f, 0f, height * 0.45f,
+            intArrayOf(0x55FFFFFF, 0x00FFFFFF), null, android.graphics.Shader.TileMode.CLAMP,
+        )
+        shadeShader = android.graphics.LinearGradient(
+            0f, height * 0.62f, 0f, height,
+            intArrayOf(0x00000000, 0x33000000), null, android.graphics.Shader.TileMode.CLAMP,
+        )
+        sheenPaint.shader = sheenShader
+        shadePaint.shader = shadeShader
+    }
+
+    private fun darken(color: Int, amount: Float): Int {
+        val k = 1f - amount
+        val a = (color ushr 24) and 0xFF
+        val r = (((color shr 16) and 0xFF) * k).toInt()
+        val g = (((color shr 8) and 0xFF) * k).toInt()
+        val b = ((color and 0xFF) * k).toInt()
+        return (a shl 24) or (r shl 16) or (g shl 8) or b
+    }
+
     private fun drawKey(canvas: Canvas, i: Int) {
             if (keys[i].kind == KeyKind.SPACER) return
             val r = rects[i]
             val key = keys[i]
             val fill = fillFor(i, key)
-            if (fill != null) canvas.drawPath(keyPaths[i], fill)
+            if (fill != null) drawKeyFace(canvas, i, fill)
             if (key.kind == KeyKind.SHIFT) {
                 drawShift(canvas, r, caps = key.label == KeyboardLayout.CAPS_LOCK_LABEL, active = key.active)
                 return
