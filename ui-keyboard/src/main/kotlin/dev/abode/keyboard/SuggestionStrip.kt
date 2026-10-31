@@ -8,6 +8,10 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.os.SystemClock
 import android.util.AttributeSet
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
 import android.view.MotionEvent
 import android.view.View
 import compose.icons.TablerIcons
@@ -400,35 +404,19 @@ class SuggestionStrip @JvmOverloads constructor(
         canvas.restore()
     }
 
-    /**
-     * The Chyme mark: a thin ring around a shell of curved strokes.
-     *
-     * Drawn rather than shipped as a bitmap so it takes the theme's label colour
-     * like every other icon on the strip, and stays sharp at any density.
-     */
+    /** The Abode logo, an alpha mask tinted in the icon colour so it follows the theme. */
+    private val chymeLogo: Bitmap? by lazy {
+        runCatching { BitmapFactory.decodeResource(resources, dev.abode.ui.keyboard.R.drawable.abode_logo) }.getOrNull()
+    }
+    private val logoPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+
     private fun drawChymeMark(canvas: Canvas, r: RectF) {
-        val size = minOf(r.height() * 0.30f, r.width() * 0.32f)
-        if (size <= 0f) return
-        val cx = r.centerX()
-        val cy = r.centerY()
-        iconPaint.style = Paint.Style.STROKE
-        iconPaint.strokeCap = Paint.Cap.ROUND
-
-        // The ring.
-        iconPaint.strokeWidth = (size * 0.06f).coerceAtLeast(1f)
-        canvas.drawCircle(cx, cy, size, iconPaint)
-
-        // The shell: strokes that leave the left rim and curl toward the top right,
-        // shorter as they get closer to the middle.
-        iconPaint.strokeWidth = (size * 0.11f).coerceAtLeast(1f)
-        val box = RectF()
-        for (i in 0 until 7) {
-            val t = i / 6f
-            val radius = size * (0.26f + 0.66f * t)
-            box.set(cx - radius, cy - radius, cx + radius, cy + radius)
-            canvas.drawArc(box, -156f + 14f * t, 168f - 46f * t, false, iconPaint)
-        }
-        iconPaint.strokeCap = Paint.Cap.BUTT
+        val logo = chymeLogo ?: return
+        val s = minOf(r.height() * 0.5f, r.width() * 0.6f)
+        if (s <= 0f) return
+        logoPaint.colorFilter = PorterDuffColorFilter(iconPaint.color, PorterDuff.Mode.SRC_IN)
+        vizRect.set(r.centerX() - s / 2f, r.centerY() - s / 2f, r.centerX() + s / 2f, r.centerY() + s / 2f)
+        canvas.drawBitmap(logo, null, vizRect, logoPaint)
     }
 
     private fun ellipsise(text: String, maxWidth: Float): String {

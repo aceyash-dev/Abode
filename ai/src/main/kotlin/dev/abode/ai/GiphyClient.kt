@@ -51,6 +51,10 @@ object GiphyClient {
         "\u2728" to "wow",
     )
 
+    /** The phone's language code, so GIF results follow the person's language. */
+    private fun deviceLang(): String =
+        java.util.Locale.getDefault().language.takeIf { it.matches(Regex("[a-z]{2,3}")) } ?: "en"
+
     suspend fun search(query: String, limit: Int = GIFS_PER_SEARCH): List<GifResult> =
         withContext(Dispatchers.IO) {
             val key = BuildConfig.GIPHY_API_KEY
@@ -62,7 +66,7 @@ object GiphyClient {
             val encoded = URLEncoder.encode(query, "UTF-8")
             val url = URL(
                 "https://api.giphy.com/v1/gifs/search" +
-                    "?api_key=$key&q=$encoded&limit=$limit&rating=pg-13&lang=en",
+                    "?api_key=$key&q=$encoded&limit=$limit&rating=pg-13&lang=${deviceLang()}",
             )
             val connection = runCatching { url.openConnection() as HttpURLConnection }.getOrElse {
                 throw ChymeException("Could not reach Giphy")
