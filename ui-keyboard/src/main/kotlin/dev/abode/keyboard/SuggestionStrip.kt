@@ -367,6 +367,13 @@ class SuggestionStrip @JvmOverloads constructor(
         }
     }
 
+    /**
+     * The studio microphone: capsule with a grille, a cradle, and a stand.
+     *
+     * Drawn to match the icon the owner supplied rather than a rounded blob: at
+     * strip size the cradle arms are what make it read as a microphone instead of
+     * a pill.
+     */
     private fun drawMic(canvas: Canvas) {
         val size = BUTTON_WIDTH * density
         val left = width - size
@@ -375,21 +382,52 @@ class SuggestionStrip @JvmOverloads constructor(
         val fill = if (micPressed) pressedPaint else slotPaint
         canvas.drawRoundRect(r, corner, corner, fill)
 
-        // A microphone drawn from three strokes: capsule, stand, stem.
-        val h = minOf(r.height() * 0.30f, r.width() * 0.28f)
+        val h = minOf(r.height() * 0.26f, r.width() * 0.24f)
+        if (h <= 0f) return
         val cx = r.centerX()
-        val cy = r.centerY() - h * 0.15f
+        val cy = r.centerY()
         iconPaint.style = Paint.Style.STROKE
-        iconPaint.strokeWidth = (h * 0.30f).coerceAtLeast(1.2f)
+        iconPaint.strokeCap = Paint.Cap.ROUND
+        iconPaint.strokeJoin = Paint.Join.ROUND
+        iconPaint.strokeWidth = (h * 0.22f).coerceAtLeast(1.3f)
+
+        // The capsule.
+        val capsuleWidth = h * 0.78f
+        val capsuleTop = cy - h * 1.30f
+        val capsuleBottom = cy + h * 0.42f
         canvas.drawRoundRect(
-            RectF(cx - h * 0.42f, cy - h, cx + h * 0.42f, cy + h * 0.55f),
-            h * 0.42f, h * 0.42f, iconPaint,
+            RectF(cx - capsuleWidth / 2f, capsuleTop, cx + capsuleWidth / 2f, capsuleBottom),
+            capsuleWidth / 2f,
+            capsuleWidth / 2f,
+            iconPaint,
         )
+
+        // The grille: four short lines inside the capsule.
+        val lineHalf = capsuleWidth * 0.22f
+        for (i in 0 until 4) {
+            val y = capsuleTop + capsuleWidth * (0.40f + i * 0.34f)
+            canvas.drawLine(cx - lineHalf, y, cx + lineHalf, y, iconPaint)
+        }
+
+        // The cradle: an arc under the capsule with a nub at each end.
+        val cradleRadius = h * 1.12f
+        val cradleTop = cy - h * 0.30f
         canvas.drawArc(
-            RectF(cx - h * 0.95f, cy - h * 0.35f, cx + h * 0.95f, cy + h * 1.15f),
-            0f, 180f, false, iconPaint,
+            RectF(cx - cradleRadius, cradleTop, cx + cradleRadius, cradleTop + cradleRadius * 1.5f),
+            0f,
+            180f,
+            false,
+            iconPaint,
         )
-        canvas.drawLine(cx, cy + h * 1.15f, cx, cy + h * 1.55f, iconPaint)
+        iconPaint.style = Paint.Style.FILL
+        canvas.drawCircle(cx - cradleRadius, cradleTop + cradleRadius * 0.75f, iconPaint.strokeWidth * 0.85f, iconPaint)
+        canvas.drawCircle(cx + cradleRadius, cradleTop + cradleRadius * 0.75f, iconPaint.strokeWidth * 0.85f, iconPaint)
+
+        // The stand: a stem and a foot.
+        iconPaint.style = Paint.Style.STROKE
+        val footY = cy + h * 1.72f
+        canvas.drawLine(cx, cradleTop + cradleRadius * 1.5f, cx, footY, iconPaint)
+        canvas.drawLine(cx - h * 0.62f, footY, cx + h * 0.62f, footY, iconPaint)
     }
 
     private fun drawGridIcon(canvas: Canvas, r: RectF) {

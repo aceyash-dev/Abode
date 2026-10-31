@@ -1212,11 +1212,14 @@ class AbodeInputMethodService : InputMethodService(),
         if (url.isBlank()) return
         val gif = currentGifs.firstOrNull { it.url == url }
         val media = gif?.url?.takeIf { it.isNotBlank() } ?: url
-        val acceptsImages = currentInputEditorInfo
-            ?.contentMimeTypes
-            ?.any { it.startsWith("image/") } == true
-
-        if (!acceptsImages) {
+        // A null contentMimeTypes means the app did not say — and most chat apps do
+        // not. Gating on it was why every GIF still went out as a link: the list was
+        // empty, so the attachment was never even attempted. Only a list that
+        // positively excludes images is worth trusting; otherwise try the commit and
+        // believe its return value, which is the only honest signal there is.
+        val declared = currentInputEditorInfo?.contentMimeTypes
+        val textOnly = declared != null && declared.none { it.startsWith("image/") }
+        if (textOnly) {
             commit(url)
             endGifSearch()
             return
